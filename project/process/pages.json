@@ -1,0 +1,56 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationBarTitleText": ""
+			}
+		},
+		{
+			"path": "pages/home/home",
+			"style": {
+				"navigationBarTitleText": ""
+			}
+		},
+		{
+			"path": "pages/approval/approval",
+			"style": {
+				"navigationBarTitleText": ""
+			}
+		},
+		{
+			"path": "pages/mine/mine",
+			"style": {
+				"navigationBarTitleText": ""
+			}
+		}
+
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"uniIdRouter": {},
+	"tabBar": {
+		"list": [{
+				"iconPath": "",
+				"selectedIconPath": "",
+				"text": "工作台",
+				"pagePath": "pages/home/home"
+			},
+			{
+				"iconPath": "",
+				"selectedIconPath": "",
+				"text": "审批",
+				"pagePath": "pages/approval/approval"
+			}, {
+				"iconPath": "",
+				"selectedIconPath": "",
+				"text": "我的",
+				"pagePath": "pages/mine/mine"
+			}
+		]
+	}
+}
