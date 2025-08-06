@@ -7,21 +7,17 @@
 <script>
 	export default {
 		data() {
-			return {
-
-			}
+			return {}
 		},
 		methods: {
 			login: () => {
 				// console.log(123)
 				uni.switchTab({
-					url: "/pages/home/home"
+					url: '/pages/home/home'
 				})
 			}
 		}
 	}
 </script>
 
-<style>
-
-</style>
+<style></style>

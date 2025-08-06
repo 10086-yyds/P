@@ -1,5 +1,8 @@
 const path = require('path');
 
+// 加载环境变量
+require('dotenv').config();
+
 // 获取当前环境
 const env = process.env.NODE_ENV || 'development';
 
@@ -10,34 +13,34 @@ const baseConfig = {
     name: 'hou',
     version: '0.0.0'
   },
-  
+
   // 服务器配置
   server: {
     host: 'localhost',
     port: process.env.PORT || 3000
   },
-  
+
   // 数据库配置
   database: {
-    // MongoDB Atlas 连接字符串
-    uri: 'mongodb+srv://2732849023:kV2y2TU4cYPq6Y9C@cluster0.plvxg2d.mongodb.net/bookkeeping',
+    // MongoDB Atlas 连接字符串 - 从环境变量读取
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hou_db',
     // 本地 MongoDB 配置（备用）
-    host: 'localhost',
-    port: 27017,
-    name: 'hou_db'
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 27017,
+    name: process.env.DB_NAME || 'hou_db'
   },
-  
+
   // 日志配置
   logging: {
     level: 'info',
     format: 'combined'
   },
-  
+
   // 安全配置
   security: {
-    sessionSecret: 'your-secret-key',
+    sessionSecret: process.env.SESSION_SECRET || 'development-only-secret',
     cors: {
-      origin: '*',
+      origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
       credentials: true
     }
   }
@@ -52,9 +55,9 @@ const development = {
   },
   database: {
     ...baseConfig.database,
-    // 开发环境使用 MongoDB Atlas
-    uri: 'mongodb+srv://2732849023:kV2y2TU4cYPq6Y9C@cluster0.plvxg2d.mongodb.net/bookkeeping_dev',
-    name: 'bookkeeping_dev'
+    // 开发环境使用环境变量或本地数据库
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/bookkeeping_dev',
+    name: process.env.DB_NAME || 'bookkeeping_dev'
   },
   logging: {
     level: 'debug',
@@ -62,7 +65,7 @@ const development = {
   },
   security: {
     ...baseConfig.security,
-    sessionSecret: 'dev-secret-key'
+    sessionSecret: process.env.SESSION_SECRET || 'dev-secret-key'
   }
 };
 
@@ -106,9 +109,9 @@ const test = {
   },
   database: {
     ...baseConfig.database,
-    // 测试环境使用测试数据库
-    uri: 'mongodb+srv://2732849023:kV2y2TU4cYPq6Y9C@cluster0.plvxg2d.mongodb.net/bookkeeping_test',
-    name: 'bookkeeping_test'
+    // 测试环境使用环境变量或本地测试数据库
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/bookkeeping_test',
+    name: process.env.DB_NAME || 'bookkeeping_test'
   },
   logging: {
     level: 'error',
