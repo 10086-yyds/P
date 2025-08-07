@@ -24,8 +24,6 @@ class Database {
 
       // 连接选项
       const options = {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
       };
