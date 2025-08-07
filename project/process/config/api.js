@@ -1,4 +1,18 @@
 // API配置文件
+
+// 后端服务器配置
+export const BACKEND_CONFIG = {
+  // 后端API基础地址
+  BASE_URL: 'http://localhost:3000',
+  
+  // 接口前缀
+  API_PREFIX: {
+    AUTH: '/wxy/auth',
+    USER: '/users',
+    COMMON: '/'
+  }
+};
+
 export const API_CONFIG = {
   // 高德地图API配置
   AMAP: {
