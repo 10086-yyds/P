@@ -200,9 +200,9 @@ export default {
         approvals: 15,
       },
       recentItems: [
-        { name: "地铁3号线项目", icon: "🚇", time: "2小时前" },
-        { name: "施工图纸库", icon: "📐", time: "昨天" },
-        { name: "安全培训资料", icon: "🛡️", time: "3天前" },
+        { name: "地铁3号线项目", icon: "🚇", time: "2小时前", type: "project", timestamp: Date.now() - 7200000 },
+        { name: "施工图纸库", icon: "📐", time: "昨天", type: "document", timestamp: Date.now() - 86400000 },
+        { name: "安全培训资料", icon: "🛡️", time: "3天前", type: "document", timestamp: Date.now() - 259200000 },
       ],
     };
   },
@@ -1332,14 +1332,15 @@ export default {
         icon: getIconByTitle(todoItem.title),
         time: '刚刚',
         type: 'todo',
-        id: Date.now() // 用于唯一标识
+        id: Date.now(), // 用于唯一标识
+        timestamp: new Date().getTime() // 添加时间戳
       };
 
       // 检查是否已经存在相同的项目
       const existingIndex = this.recentItems.findIndex(item => item.name === todoItem.title);
       
       if (existingIndex !== -1) {
-        // 如果已存在，更新时间和位置
+        // 如果已存在，移除旧记录
         this.recentItems.splice(existingIndex, 1);
       }
 
@@ -1351,8 +1352,17 @@ export default {
         this.recentItems = this.recentItems.slice(0, 5);
       }
 
-      // 更新其他项目的时间显示
-      this.updateRecentItemsTime();
+      // 只更新新添加项目的时间，其他项目保持原有时间
+      this.updateTimeForNewItem();
+    },
+
+    // 只为新添加的项目更新时间
+    updateTimeForNewItem() {
+      // 只更新第一个项目（刚刚添加的）的时间
+      if (this.recentItems.length > 0) {
+        this.recentItems[0].time = '刚刚';
+        this.recentItems[0].timestamp = new Date().getTime();
+      }
     },
 
     // 更新最近访问项目的时间显示
@@ -1363,11 +1373,17 @@ export default {
         } else if (index === 1) {
           item.time = '1分钟前';
         } else if (index === 2) {
-          item.time = '5分钟前';
+          item.time = '3分钟前';
         } else if (index === 3) {
-          item.time = '10分钟前';
+          item.time = '5分钟前';
         } else {
-          item.time = '30分钟前';
+          item.time = '10分钟前';
+        }
+        
+        // 为每个项目添加时间戳，用于更精确的时间计算
+        if (!item.timestamp) {
+          const now = new Date();
+          item.timestamp = now.getTime() - (index * 60000); // 每分钟递减
         }
       });
     },
@@ -1376,11 +1392,14 @@ export default {
     handleRecentItemClick(item, index) {
       console.log('点击最近访问:', item);
       
+      // 首先更新最近访问列表（无论什么类型都要更新）
+      this.updateRecentItemsFromClick(item, index);
+      
       if (item.type === 'todo') {
         // 如果是待办事项，需要在todoList中找到对应的项目
         const todoIndex = this.todoList.findIndex(todo => todo.title === item.name);
         if (todoIndex !== -1) {
-          // 找到对应的待办事项，调用点击处理
+          // 调用点击处理
           this.handleTodoClick(this.todoList[todoIndex], todoIndex);
         } else {
           // 如果找不到对应的待办事项，显示提示
@@ -1389,14 +1408,95 @@ export default {
             icon: 'none'
           });
         }
+      } else if (item.type === 'project') {
+        // 如果是项目，跳转到项目详情页面
+        this.handleProjectClick(item);
+      } else if (item.type === 'document') {
+        // 如果是文档，跳转到文档详情页面
+        this.handleDocumentClick(item);
       } else {
-        // 其他类型的项目（如项目、文档等）
+        // 其他类型的项目
         uni.showToast({
           title: `点击了最近访问: ${item.name}`,
           icon: "none",
         });
       }
-    }
+    },
+
+    // 处理项目点击
+    handleProjectClick(projectItem) {
+      console.log('点击项目:', projectItem);
+      
+      // 显示加载提示
+      uni.showLoading({
+        title: '加载中...'
+      });
+      
+      setTimeout(() => {
+        uni.hideLoading();
+        
+        // 跳转到项目详情页面
+        uni.navigateTo({
+          url: `/pages/project/project-detail?name=${encodeURIComponent(projectItem.name)}&icon=${encodeURIComponent(projectItem.icon)}`,
+          success: () => {
+            console.log('项目详情页面跳转成功');
+          },
+          fail: (err) => {
+            console.error('项目详情页面跳转失败:', err);
+            uni.showModal({
+              title: '提示',
+              content: '项目详情页面正在开发中，敬请期待！',
+              showCancel: false
+            });
+          }
+        });
+      }, 500);
+    },
+
+    // 处理文档点击
+    handleDocumentClick(documentItem) {
+      console.log('点击文档:', documentItem);
+      
+      // 显示加载提示
+      uni.showLoading({
+        title: '加载中...'
+      });
+      
+      setTimeout(() => {
+        uni.hideLoading();
+        
+        // 跳转到文档详情页面
+        uni.navigateTo({
+          url: `/pages/document/document-detail?name=${encodeURIComponent(documentItem.name)}&icon=${encodeURIComponent(documentItem.icon)}`,
+          success: () => {
+            console.log('文档详情页面跳转成功');
+          },
+          fail: (err) => {
+            console.error('文档详情页面跳转失败:', err);
+            uni.showModal({
+              title: '提示',
+              content: '文档详情页面正在开发中，敬请期待！',
+              showCancel: false
+            });
+          }
+        });
+      }, 500);
+    },
+
+    // 从最近访问列表点击时更新访问记录
+    updateRecentItemsFromClick(item, currentIndex) {
+      // 将当前项目移动到列表开头
+      this.recentItems.splice(currentIndex, 1);
+      
+      // 更新项目的时间戳为当前时间
+      item.timestamp = new Date().getTime();
+      item.time = '刚刚';
+      
+      this.recentItems.unshift(item);
+      
+      // 只更新被点击项目的时间，其他项目保持原有时间
+      // 不需要更新其他项目的时间，保持它们的原有状态
+    },
   },
 };
 </script>

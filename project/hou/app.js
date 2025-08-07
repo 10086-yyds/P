@@ -5,25 +5,24 @@ var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 var cors = require('cors');
 var config = require('./config/config');
-var database = require('./db/database');
+var { connect } = require('./db/database');
+
+// 先连接数据库，再注册模型
+connect().then(() => {
+  require('./db/model');
+});
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
+var jbhRouter = require('./routes/jbh');
+var lzRouter = require('./routes/lz');
 var wxyRouter = require('./routes/wxy');
+var zjfRouter = require('./routes/zjf');
+
 var app = express();
 
 // 设置环境变量
 app.set('env', process.env.NODE_ENV || 'development');
-
-// 连接数据库
-database.connect().catch(err => {
-  console.error('数据库连接失败:', err.message);
-  // 在开发环境中可以选择退出进程，生产环境中可以继续运行
-  if (process.env.NODE_ENV === 'production') {
-    console.error('生产环境数据库连接失败，应用将退出');
-    process.exit(1);
-  }
-});
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -94,7 +93,11 @@ if (app.get('env') === 'production') {
 
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
+
+app.use('/jbh', jbhRouter);
+app.use('/lz', lzRouter);
 app.use('/wxy', wxyRouter);
+app.use('/zjf', zjfRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

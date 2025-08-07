@@ -1,5 +1,5 @@
 {
-	"pages": [ 
+	"pages": [
 		{
 			"path": "pages/login/login",
 			"style": {
@@ -28,7 +28,8 @@
 		{
 			"path": "pages/approval/approval",
 			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "我的审批",
+				"navigationStyle": "custom"
 			}
 		},
 		{
@@ -40,7 +41,21 @@
 		{
 			"path": "pages/todo/todo-detail",
 			"style": {
-				"navigationBarTitleText": "待办详情",
+				"navigationBarTitleText": "审批详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/project/project-detail",
+			"style": {
+				"navigationBarTitleText": "项目详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/document/document-detail",
+			"style": {
+				"navigationBarTitleText": "文档详情",
 				"navigationStyle": "custom"
 			}
 		}
@@ -53,7 +68,8 @@
 	},
 	"uniIdRouter": {},
 	"tabBar": {
-		"list": [{
+		"list": [
+			{
 				"iconPath": "",
 				"selectedIconPath": "",
 				"text": "工作台",
@@ -64,7 +80,8 @@
 				"selectedIconPath": "",
 				"text": "审批",
 				"pagePath": "pages/approval/approval"
-			}, {
+			},
+			{
 				"iconPath": "",
 				"selectedIconPath": "",
 				"text": "我的",

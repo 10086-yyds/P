@@ -1,7 +1,7 @@
-const mongoose = require('mongoose');
-const database = require('./database');
 
-let userSchema = new mongoose.Schema({
+const { mongoose } = require('./database');
+
+const userSchema = new mongoose.Schema({
   username: {
     type: String,
     required: false,
@@ -96,9 +96,10 @@ let userSchema = new mongoose.Schema({
   }
 });
 
-let UserModel = mongoose.model("user", userSchema, "user");
 
-let processSchema = new mongoose.Schema({
+const userModel = mongoose.model("user", userSchema, "user");
+
+const processSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
@@ -170,7 +171,7 @@ let processSchema = new mongoose.Schema({
   },
 });
 
-let processModel = mongoose.model("process", processSchema, "process");
+const processModel = mongoose.model("process", processSchema, "process");
 
 const roleSchema = new mongoose.Schema({
   name: {
@@ -195,7 +196,10 @@ const roleSchema = new mongoose.Schema({
     default: [],
   },
 });
-let roleModel = mongoose.model("role", roleSchema, "role");
+
+
+const roleModel = mongoose.model("role", roleSchema, "role");
+
 module.exports = {
   UserModel,
   processModel,
