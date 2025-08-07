@@ -1,6 +1,6 @@
-let mongoose = require("./database");
+const { mongoose } = require('./database');
 
-let userSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema({
   username: {
     type: String,
     required: true,
@@ -44,9 +44,9 @@ let userSchema = new mongoose.Schema({
   },
 });
 
-let userModel = mongoose.model("user", userSchema, "user");
+const userModel = mongoose.model("user", userSchema, "user");
 
-let processSchema = new mongoose.Schema({
+const processSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
@@ -118,7 +118,7 @@ let processSchema = new mongoose.Schema({
   },
 });
 
-let processModel = mongoose.model("process", processSchema, "process");
+const processModel = mongoose.model("process", processSchema, "process");
 
 const roleSchema = new mongoose.Schema({
   name: {
@@ -143,6 +143,8 @@ const roleSchema = new mongoose.Schema({
     default: [],
   },
 });
+
+const roleModel = mongoose.model("role", roleSchema, "role");
 
 module.exports = {
   userModel,

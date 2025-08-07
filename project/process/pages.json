@@ -30,6 +30,20 @@
 				"navigationBarTitleText": "待办详情",
 				"navigationStyle": "custom"
 			}
+		},
+		{
+			"path": "pages/project/project-detail",
+			"style": {
+				"navigationBarTitleText": "项目详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/document/document-detail",
+			"style": {
+				"navigationBarTitleText": "文档详情",
+				"navigationStyle": "custom"
+			}
 		}
 	],
 	"globalStyle": {
