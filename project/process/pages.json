@@ -7,6 +7,19 @@
 			}
 		},
 		{
+			"path": "pages/login/sms-login",
+			"style": {
+				"navigationBarTitleText": "短信登录"
+			}
+		},
+		{
+			"path": "pages/login/oauth-webview",
+			"style": {
+				"navigationBarTitleText": "第三方登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/home/home",
 			"style": {
 				"navigationBarTitleText": ""
