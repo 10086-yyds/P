@@ -23,8 +23,14 @@
 			"style": {
 				"navigationBarTitleText": ""
 			}
+		},
+		{
+			"path": "pages/todo/todo-detail",
+			"style": {
+				"navigationBarTitleText": "待办详情",
+				"navigationStyle": "custom"
+			}
 		}
-
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
