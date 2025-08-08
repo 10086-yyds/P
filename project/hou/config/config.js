@@ -1,7 +1,7 @@
 const path = require('path');
 
 // 加载环境变量
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // 获取当前环境
 const env = process.env.NODE_ENV || 'development';

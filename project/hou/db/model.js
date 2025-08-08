@@ -20,8 +20,9 @@ let userSchema = new mongoose.Schema({
   //邮箱
   phone: {
     type: String,
-    required: true,
+    required: false, // 改为非必需，在业务逻辑中验证
     unique: true,
+    sparse: true, // 允许null值，但如果有值必须唯一
   },
   //手机号
   avatar: {
@@ -55,45 +56,31 @@ let userSchema = new mongoose.Schema({
       default: null
     }
   },
-  
-  // {{ AURA-X: Add - 添加第三方登录字段支持水滴聚合登录. }}
-  //第三方登录信息
-  thirdPartyId: {
+  // {{ AURA-X: Add - 添加GitHub OAuth登录相关字段. }}
+  // GitHub OAuth相关字段
+  githubId: {
     type: String,
-    default: null,
-    unique: false,
-    sparse: true
+    unique: true,
+    sparse: true // 允许null值，但如果有值必须唯一
   },
-  thirdPartyPlatform: {
+  githubLogin: {
     type: String,
     default: null
   },
-  thirdPartyInfo: {
-    openid: {
-      type: String,
-      default: null
-    },
-    nickname: {
-      type: String,
-      default: null
-    },
-    avatar: {
-      type: String,
-      default: null
-    },
-    platform: {
-      type: String,
-      default: null
-    },
-    loginAt: {
-      type: Date,
-      default: null
-    },
-    lastLoginAt: {
-      type: Date,
-      default: null
-    }
+  githubName: {
+    type: String,
+    default: null
+  },
+  loginType: {
+    type: String,
+    enum: ['phone', 'github', 'mixed'],
+    default: 'phone'
+  },
+  lastLoginAt: {
+    type: Date,
+    default: null
   }
+
 });
 
 let UserModel = mongoose.model("user", userSchema, "user");
