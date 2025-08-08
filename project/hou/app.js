@@ -13,6 +13,7 @@ var database = require('./db/database');
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 var wxyRouter = require('./routes/wxy');
+var rolesRouter = require('./routes/admin/roles');
 var app = express();
 
 // 设置环境变量
@@ -98,6 +99,7 @@ if (app.get('env') === 'production') {
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/wxy', wxyRouter);
+app.use('/admin/roles', rolesRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

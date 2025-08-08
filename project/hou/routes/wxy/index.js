@@ -1,11 +1,12 @@
 var express = require('express');
 var router = express.Router();
 var multiparty = require('multiparty');
-var {UserModel, PermissionModel, MenuPermissionModel, MenuModel} = require('../../db/model.js');
+var {UserModel, PermissionModel, MenuPermissionModel, MenuModel, roleModel} = require('../../db/model.js');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const smsService = require('../utils/smsService');
 const axios = require('axios');
+const { authenticateToken, requirePermission, generateToken, getUserPermissions } = require('../../middleware/auth');
 
 // JWT密钥
 const JWT_SECRET = 'your-secret-key';
@@ -31,6 +32,42 @@ router.get('/test', (req, res) => {
             timestamp: new Date().toISOString()
         }
     });
+});
+
+// {{ AURA-X: Add - 获取当前用户信息接口，包含角色和权限. }}
+router.get('/auth/me', authenticateToken, async (req, res) => {
+    try {
+        const user = req.user; // 已经通过认证中间件填充了角色信息
+        const permissions = getUserPermissions(user);
+
+        res.json({
+            code: 200,
+            message: '获取用户信息成功',
+            data: {
+                _id: user._id,
+                username: user.username,
+                phone: user.phone,
+                email: user.email,
+                avatar: user.avatar,
+                status: user.status,
+                role: user.role ? {
+                    _id: user.role._id,
+                    name: user.role.name,
+                    description: user.role.description
+                } : null,
+                permissions,
+                loginType: user.loginType,
+                lastLoginAt: user.lastLoginAt,
+                createdAt: user.createdAt
+            }
+        });
+    } catch (error) {
+        console.error('❌ [获取用户信息] 错误:', error);
+        res.status(500).json({
+            code: 500,
+            message: '获取用户信息失败'
+        });
+    }
 });
 
 // 生成随机验证码
@@ -218,8 +255,8 @@ router.post('/auth/login', async (req, res) => {
     try {
         const { phone, password } = req.body;
 
-        // 查找用户
-        const user = await UserModel.findOne({ phone });
+        // 查找用户并填充角色信息
+        const user = await UserModel.findOne({ phone }).populate('role');
         
         // 验证用户是否存在
         if (!user || !user.password) {
@@ -237,22 +274,36 @@ router.post('/auth/login', async (req, res) => {
             return res.status(400).json({ message: '密码错误' });
         }
 
-        // 生成 JWT token
-        const token = jwt.sign(
-            { userId: user._id, phone: user.phone },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        // {{ AURA-X: Modify - 使用新的token生成方法，包含角色信息. }}
+        const token = generateToken(user);
 
         // 更新最后登录时间
         await UserModel.findByIdAndUpdate(user._id, {
             lastLoginAt: new Date()
         });
 
+        // 获取用户权限
+        const permissions = getUserPermissions(user);
+
         res.json({
             code: 200,
             message: '登录成功',
-            data: { token }
+            data: { 
+                token,
+                user: {
+                    _id: user._id,
+                    username: user.username,
+                    phone: user.phone,
+                    email: user.email,
+                    avatar: user.avatar,
+                    role: user.role ? {
+                        _id: user.role._id,
+                        name: user.role.name,
+                        description: user.role.description
+                    } : null,
+                    permissions
+                }
+            }
         });
     } catch (error) {
         console.error('登录错误:', error);
@@ -351,8 +402,8 @@ router.post('/auth/sms-login', async (req, res) => {
         // {{ AURA-X: Add - 添加短信登录验证调试日志. }}
         console.log('🔍 [短信登录验证] 开始验证，手机号:', phone);
         
-        // 查找用户验证码信息
-        const user = await UserModel.findOne({ phone });
+        // 查找用户验证码信息并填充角色
+        const user = await UserModel.findOne({ phone }).populate('role');
         
         // {{ AURA-X: Add - 添加调试日志查看短信登录验证过程. }}
         console.log('🔍 [短信登录验证] 查询结果:', {
@@ -406,12 +457,8 @@ router.post('/auth/sms-login', async (req, res) => {
 
         console.log('✅ [短信登录验证] 验证码验证成功!');
 
-        // 生成 JWT token
-        const token = jwt.sign(
-            { userId: user._id, phone: user.phone },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        // {{ AURA-X: Modify - 使用新的token生成方法，包含角色信息. }}
+        const token = generateToken(user);
 
         // 更新最后登录时间并清除验证码
         await UserModel.findByIdAndUpdate(user._id, {
@@ -419,10 +466,28 @@ router.post('/auth/sms-login', async (req, res) => {
             verifyCode: null // 清除验证码
         });
 
+        // 获取用户权限
+        const permissions = getUserPermissions(user);
+
         res.json({
             code: 200,
             message: '登录成功',
-            data: { token }
+            data: { 
+                token,
+                user: {
+                    _id: user._id,
+                    username: user.username,
+                    phone: user.phone,
+                    email: user.email,
+                    avatar: user.avatar,
+                    role: user.role ? {
+                        _id: user.role._id,
+                        name: user.role.name,
+                        description: user.role.description
+                    } : null,
+                    permissions
+                }
+            }
         });
     } catch (error) {
         console.error('短信登录错误:', error);
@@ -551,7 +616,7 @@ router.get('/auth/github/callback', async (req, res) => {
                 { githubId: githubUser.id.toString() },
                 { email: userEmail }
             ]
-        });
+        }).populate('role');
 
         if (user) {
             // 用户已存在，更新GitHub信息
