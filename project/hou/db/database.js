@@ -34,6 +34,30 @@ class Database {
       this.isConnected = true;
       console.log('✅ 数据库连接成功');
 
+      // {{ AURA-X: Add - 连接后进行索引修复，移除 user.username 上的历史唯一索引以避免 E11000。 }}
+      try {
+        const admin = mongoose.connection.db.admin();
+        const info = await admin.serverStatus();
+        console.log('🧭 Mongo 版本:', info.version);
+
+        const userCollection = mongoose.connection.collection('user');
+        const indexes = await userCollection.indexes();
+        // {{ AURA-X: Modify - 通用修复 username/email 的历史唯一索引。 }}
+        const fieldsToFix = ['username', 'email'];
+        for (const field of fieldsToFix) {
+          const idx = indexes.find(i => (i.key && i.key[field] === 1));
+          if (idx && idx.unique) {
+            console.warn(`⚠️ 检测到 user.${field} 唯一索引，准备移除以兼容当前注册流程:`, idx.name);
+            await userCollection.dropIndex(idx.name);
+            // 视需要重建为非唯一、稀疏索引，避免 null/缺失字段冲突
+            await userCollection.createIndex({ [field]: 1 }, { unique: false, sparse: true });
+            console.log(`✅ 已移除并重建非唯一稀疏索引: user.${field}`);
+          }
+        }
+      } catch (idxErr) {
+        console.warn('索引检查/修复失败（可忽略）:', idxErr.message);
+      }
+
       // 监听连接事件
       mongoose.connection.on('error', (err) => {
         console.error('❌ 数据库连接错误:', err);

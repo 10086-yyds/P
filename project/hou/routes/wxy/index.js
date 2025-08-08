@@ -86,12 +86,18 @@ router.post('/auth/send-code', async (req, res) => {
             });
 
             // 保存验证码到数据库
+            // {{ AURA-X: Modify - 改为原子更新，避免替换整文档；upsert 时保证写入 phone。 }}
             const updateResult = await UserModel.findOneAndUpdate(
                 { phone },
-                { 
-                    verifyCode: {
-                        code: verifyCode,
-                        expireAt
+                {
+                    $set: {
+                        verifyCode: {
+                            code: verifyCode,
+                            expireAt
+                        }
+                    },
+                    $setOnInsert: {
+                        phone
                     }
                 },
                 { upsert: true, new: true }
@@ -193,13 +199,18 @@ router.post('/auth/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // 更新用户信息
+        // 更新用户信息（原子更新，保留其他字段）
+        // {{ AURA-X: Modify - 使用$set/$unset，避免替换整文档导致phone等字段丢失。 }}
         await UserModel.findOneAndUpdate(
             { phone },
-            { 
-                password: hashedPassword,
-                verifyCode: null, // 清除验证码
-                status: 'active'
+            {
+                $set: {
+                    password: hashedPassword,
+                    status: 'active'
+                },
+                $unset: {
+                    verifyCode: ""
+                }
             }
         );
 
@@ -307,13 +318,16 @@ router.post('/auth/send-login-code', async (req, res) => {
         const result = await smsService.sendSms(phone, verifyCode);
         
         if (result.success) {
-            // 保存验证码到数据库
+            // 保存验证码到数据库（原子更新，防止替换文档）
+            // {{ AURA-X: Modify - 使用$set更新验证码字段。 }}
             const updateResult = await UserModel.findOneAndUpdate(
                 { phone },
-                { 
-                    verifyCode: {
-                        code: verifyCode,
-                        expireAt
+                {
+                    $set: {
+                        verifyCode: {
+                            code: verifyCode,
+                            expireAt
+                        }
                     }
                 },
                 { new: true }
