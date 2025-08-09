@@ -1,6 +1,6 @@
 var express = require("express");
 var router = express.Router();
-const { processModel } = require("../../db/model");
+const { processModel, contractApplicationModel, UserModel } = require("../../db/model");
 
 /* GET home page. */
 router.get("/", function (req, res, next) {
@@ -836,6 +836,671 @@ router.post("/api/projects/test-data", async function (req, res, next) {
   } catch (error) {
     console.error("创建测试数据错误:", error);
     res.error(error.message, "创建测试数据失败");
+  }
+});
+
+// ==================== 合同申请相关接口 ====================
+
+// 创建合同申请
+router.post("/api/contracts", async function (req, res, next) {
+  try {
+    console.log("开始创建合同申请");
+    console.log("请求体:", JSON.stringify(req.body, null, 2));
+
+    const {
+      applicant,
+      project,
+      contract,
+      financial,
+      paymentPlan,
+      materials,
+      remarks
+    } = req.body;
+
+    // 验证必填字段
+    if (!applicant || !applicant.name || !applicant.userId) {
+      return res.error("申请人信息不完整", "创建合同申请失败", 400);
+    }
+
+    if (!project || !project.name) {
+      return res.error("项目信息不完整", "创建合同申请失败", 400);
+    }
+
+    if (!contract || !contract.name || !contract.partyA || !contract.partyB) {
+      return res.error("合同信息不完整", "创建合同申请失败", 400);
+    }
+
+    if (!financial || !financial.amountIncludingTax) {
+      return res.error("财务信息不完整", "创建合同申请失败", 400);
+    }
+
+    // 验证申请人是否存在
+    const user = await UserModel.findById(applicant.userId);
+    if (!user) {
+      return res.error("申请人不存在", "创建合同申请失败", 400);
+    }
+
+    // 创建合同申请
+    const contractApplication = new contractApplicationModel({
+      applicant: {
+        name: applicant.name,
+        userId: applicant.userId
+      },
+      project: {
+        name: project.name,
+        description: project.description || ""
+      },
+      contract: {
+        name: contract.name,
+        type: contract.type || "工程合同",
+        partyA: {
+          name: contract.partyA.name,
+          contact: contract.partyA.contact || ""
+        },
+        partyB: {
+          name: contract.partyB.name,
+          contact: contract.partyB.contact || ""
+        },
+        startDate: new Date(contract.startDate),
+        endDate: new Date(contract.endDate),
+        paymentTerms: contract.paymentTerms || ""
+      },
+      financial: {
+        amountIncludingTax: financial.amountIncludingTax,
+        taxRate: financial.taxRate || 0,
+        taxAmount: financial.taxAmount || 0,
+        amountExcludingTax: financial.amountExcludingTax || 0,
+        invoiceType: financial.invoiceType || "增值税普通发票(蓝)"
+      },
+      paymentPlan: paymentPlan || [],
+      materials: materials || [],
+      remarks: remarks || "",
+      createdBy: req.user ? req.user._id : applicant.userId
+    });
+
+    await contractApplication.save();
+
+    // 返回创建的合同申请（包含关联数据）
+    const createdContract = await contractApplicationModel
+      .findById(contractApplication._id)
+      .populate("applicant.userId", "username phone")
+      .populate("createdBy", "username");
+
+    console.log("合同申请创建成功，ID:", contractApplication._id);
+
+    res.success(createdContract, "合同申请创建成功", 201);
+  } catch (error) {
+    console.error("创建合同申请错误:", error);
+    res.error(error.message, "创建合同申请失败");
+  }
+});
+
+// 获取合同申请列表
+router.get("/api/contracts", async function (req, res, next) {
+  try {
+    console.log("开始获取合同申请列表");
+
+    const { page = 1, limit = 10, status, applicantId, keyword } = req.query;
+    const skip = (page - 1) * limit;
+    
+    let query = { isDeleted: false };
+    
+    if (status) {
+      query.status = status;
+    }
+    
+    if (applicantId) {
+      query['applicant.userId'] = applicantId;
+    }
+    
+    if (keyword) {
+      query.$or = [
+        { 'applicant.name': { $regex: keyword, $options: 'i' } },
+        { 'project.name': { $regex: keyword, $options: 'i' } },
+        { 'contract.name': { $regex: keyword, $options: 'i' } },
+        { 'contract.partyA.name': { $regex: keyword, $options: 'i' } },
+        { 'contract.partyB.name': { $regex: keyword, $options: 'i' } }
+      ];
+    }
+
+    console.log("查询条件:", query);
+
+    const applications = await contractApplicationModel
+      .find(query)
+      .populate("applicant.userId", "username phone")
+      .populate("createdBy", "username")
+      .populate("updatedBy", "username")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await contractApplicationModel.countDocuments(query);
+
+    console.log("查询到合同申请数量:", applications.length);
+
+    res.success(
+      {
+        applications,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      },
+      "获取合同申请列表成功"
+    );
+  } catch (error) {
+    console.error("获取合同申请列表错误:", error);
+    res.error(error.message, "获取合同申请列表失败");
+  }
+});
+
+// 获取合同申请详情
+router.get("/api/contracts/:id", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+
+    console.log("获取合同申请详情，ID:", id);
+
+    // 验证ObjectId格式
+    const mongoose = require("mongoose");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      console.log("无效的ObjectId格式:", id);
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: "无效的合同申请ID格式",
+        data: null,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const application = await contractApplicationModel
+      .findOne({ _id: id, isDeleted: false })
+      .populate("applicant.userId", "username phone email")
+      .populate("createdBy", "username")
+      .populate("updatedBy", "username")
+      .populate("approval.approvers.userId", "username")
+      .populate("approval.approvedBy", "username")
+      .populate("approval.rejectedBy", "username")
+      .populate("attachments.uploadedBy", "username");
+
+    console.log("查询结果:", application ? "找到合同申请" : "合同申请不存在");
+
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: "合同申请不存在",
+        data: null,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.success(application, "获取合同申请详情成功");
+  } catch (error) {
+    console.error("获取合同申请详情错误:", error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: error.message,
+      data: null,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// 更新合同申请
+router.put("/api/contracts/:id", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+
+    // 验证ObjectId格式
+    const mongoose = require("mongoose");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的合同申请ID格式", "更新合同申请失败", 400);
+    }
+
+    console.log("更新合同申请，ID:", id);
+    console.log("请求体:", JSON.stringify(req.body, null, 2));
+
+    const updateData = req.body;
+
+    // 查找合同申请
+    const application = await contractApplicationModel.findOne({ 
+      _id: id, 
+      isDeleted: false 
+    });
+
+    if (!application) {
+      return res.error("合同申请不存在", "更新合同申请失败", 404);
+    }
+
+    // 只有草稿状态的申请可以修改
+    if (application.status !== '草稿') {
+      return res.error("只有草稿状态的申请可以修改", "更新合同申请失败", 400);
+    }
+
+    // 更新数据
+    updateData.updatedBy = req.user ? req.user._id : application.createdBy;
+    updateData.updatedAt = new Date();
+
+    const updatedApplication = await contractApplicationModel
+      .findByIdAndUpdate(id, updateData, { new: true })
+      .populate("applicant.userId", "username phone")
+      .populate("createdBy", "username")
+      .populate("updatedBy", "username");
+
+    console.log("合同申请更新成功");
+
+    res.success(updatedApplication, "合同申请更新成功");
+  } catch (error) {
+    console.error("更新合同申请错误:", error);
+    res.error(error.message, "更新合同申请失败");
+  }
+});
+
+// 提交审批
+router.post("/api/contracts/:id/submit", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+    const { approvers } = req.body;
+
+    console.log("提交合同申请审批，ID:", id);
+
+    // 验证ObjectId格式
+    const mongoose = require("mongoose");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的合同申请ID格式", "提交审批失败", 400);
+    }
+
+    const application = await contractApplicationModel.findOne({ 
+      _id: id, 
+      isDeleted: false 
+    });
+
+    if (!application) {
+      return res.error("合同申请不存在", "提交审批失败", 404);
+    }
+
+    if (application.status !== '草稿') {
+      return res.error("只有草稿状态的申请可以提交审批", "提交审批失败", 400);
+    }
+
+    // 设置审批人
+    if (approvers && approvers.length > 0) {
+      application.approval.approvers = approvers.map((approver, index) => ({
+        userId: approver.userId,
+        level: index + 1,
+        status: '待审批'
+      }));
+      application.approval.totalLevels = approvers.length;
+    }
+
+    await application.submitForApproval();
+
+    console.log("合同申请提交审批成功");
+
+    res.success(application, "合同申请提交审批成功");
+  } catch (error) {
+    console.error("提交审批错误:", error);
+    res.error(error.message, "提交审批失败");
+  }
+});
+
+// 审批操作
+router.post("/api/contracts/:id/approve", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+    const { action, comments } = req.body;
+
+    console.log("审批合同申请，ID:", id, "操作:", action);
+
+    // 验证ObjectId格式
+    const mongoose = require("mongoose");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的合同申请ID格式", "审批操作失败", 400);
+    }
+
+    const application = await contractApplicationModel.findOne({ 
+      _id: id, 
+      isDeleted: false 
+    });
+
+    if (!application) {
+      return res.error("合同申请不存在", "审批操作失败", 404);
+    }
+
+    if (!['待审批', '审批中'].includes(application.status)) {
+      return res.error("该申请不在审批状态", "审批操作失败", 400);
+    }
+
+    const userId = req.user ? req.user._id : null;
+
+    if (action === 'approve') {
+      await application.approve(userId, comments);
+    } else if (action === 'reject') {
+      await application.reject(userId, comments);
+    } else {
+      return res.error("无效的审批操作", "审批操作失败", 400);
+    }
+
+    console.log("合同申请审批操作成功");
+
+    res.success(application, `合同申请${action === 'approve' ? '审批通过' : '审批拒绝'}成功`);
+  } catch (error) {
+    console.error("审批操作错误:", error);
+    res.error(error.message, "审批操作失败");
+  }
+});
+
+// 取消申请
+router.post("/api/contracts/:id/cancel", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+
+    console.log("取消合同申请，ID:", id);
+
+    // 验证ObjectId格式
+    const mongoose = require("mongoose");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的合同申请ID格式", "取消申请失败", 400);
+    }
+
+    const application = await contractApplicationModel.findOne({ 
+      _id: id, 
+      isDeleted: false 
+    });
+
+    if (!application) {
+      return res.error("合同申请不存在", "取消申请失败", 404);
+    }
+
+    if (application.status === '已批准' || application.status === '已拒绝') {
+      return res.error("已审批的申请不能取消", "取消申请失败", 400);
+    }
+
+    const userId = req.user ? req.user._id : application.createdBy;
+    await application.cancel(userId);
+
+    console.log("合同申请取消成功");
+
+    res.success(application, "合同申请取消成功");
+  } catch (error) {
+    console.error("取消申请错误:", error);
+    res.error(error.message, "取消申请失败");
+  }
+});
+
+// 删除合同申请（软删除）
+router.delete("/api/contracts/:id", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+
+    console.log("删除合同申请，ID:", id);
+
+    // 验证ObjectId格式
+    const mongoose = require("mongoose");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的合同申请ID格式", "删除申请失败", 400);
+    }
+
+    const application = await contractApplicationModel.findOne({ 
+      _id: id, 
+      isDeleted: false 
+    });
+
+    if (!application) {
+      return res.error("合同申请不存在", "删除申请失败", 404);
+    }
+
+    // 软删除
+    application.isDeleted = true;
+    application.deletedBy = req.user ? req.user._id : application.createdBy;
+    application.deletedAt = new Date();
+    await application.save();
+
+    console.log("合同申请删除成功");
+
+    res.success(null, "合同申请删除成功");
+  } catch (error) {
+    console.error("删除申请错误:", error);
+    res.error(error.message, "删除申请失败");
+  }
+});
+
+// 获取待审批的合同申请列表
+router.get("/api/contracts/pending/approval", async function (req, res, next) {
+  try {
+    console.log("获取待审批的合同申请列表");
+
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
+
+    const applications = await contractApplicationModel
+      .findPendingApproval()
+      .populate("applicant.userId", "username phone")
+      .populate("createdBy", "username")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await contractApplicationModel.countDocuments({
+      status: { $in: ['待审批', '审批中'] },
+      isDeleted: false
+    });
+
+    console.log("查询到待审批申请数量:", applications.length);
+
+    res.success(
+      {
+        applications,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      },
+      "获取待审批申请列表成功"
+    );
+  } catch (error) {
+    console.error("获取待审批申请列表错误:", error);
+    res.error(error.message, "获取待审批申请列表失败");
+  }
+});
+
+// 获取合同申请统计数据
+router.get("/api/contracts/stats/overview", async function (req, res, next) {
+  try {
+    console.log("获取合同申请统计数据");
+
+    const stats = await Promise.all([
+      contractApplicationModel.countDocuments({ isDeleted: false }),
+      contractApplicationModel.countDocuments({ status: '草稿', isDeleted: false }),
+      contractApplicationModel.countDocuments({ status: { $in: ['待审批', '审批中'] }, isDeleted: false }),
+      contractApplicationModel.countDocuments({ status: '已批准', isDeleted: false }),
+      contractApplicationModel.countDocuments({ status: '已拒绝', isDeleted: false })
+    ]);
+
+    const result = {
+      total: stats[0],
+      draft: stats[1],
+      pending: stats[2],
+      approved: stats[3],
+      rejected: stats[4]
+    };
+
+    console.log("统计数据:", result);
+
+    res.success(result, "获取统计数据成功");
+  } catch (error) {
+    console.error("获取统计数据错误:", error);
+    res.error(error.message, "获取统计数据失败");
+  }
+});
+
+// 创建测试合同申请数据
+router.post("/api/contracts/test-data", async function (req, res, next) {
+  try {
+    console.log("开始创建测试合同申请数据");
+
+    // 创建多个测试合同申请
+    const testContracts = [
+      {
+        applicant: {
+          name: "李想",
+          userId: "64f8b8b8b8b8b8b8b8b8b8b8"
+        },
+        project: {
+          name: "某兰公园一区改造工程",
+          description: "对某兰公园一区进行整体改造升级"
+        },
+        contract: {
+          name: "某兰公园一区改造工程合同",
+          type: "工程合同",
+          partyA: {
+            name: "大大建设",
+            contact: "13800138001"
+          },
+          partyB: {
+            name: "某兰建设有限公司",
+            contact: "13800138002"
+          },
+          startDate: "2021-07-26",
+          endDate: "2021-08-23",
+          paymentTerms: "按月付款"
+        },
+        financial: {
+          amountIncludingTax: 100000,
+          taxRate: 1,
+          taxAmount: 990,
+          amountExcludingTax: 99001,
+          invoiceType: "增值税普通发票(蓝)"
+        },
+        paymentPlan: [
+          {
+            date: "2021-08-12",
+            amount: 990,
+            description: "第一期付款",
+            status: "已收款"
+          },
+          {
+            date: "2021-08-20",
+            amount: 990,
+            description: "第二期付款",
+            status: "待收款"
+          }
+        ],
+        materials: [
+          {
+            name: "钢筋",
+            quantity: 1,
+            unit: "吨",
+            unitPrice: 1000,
+            totalPrice: 1000,
+            supplier: "某钢铁公司"
+          },
+          {
+            name: "水泥",
+            quantity: 1,
+            unit: "吨",
+            unitPrice: 1000,
+            totalPrice: 1000,
+            supplier: "某建材公司"
+          }
+        ],
+        remarks: "备注备注备注备注备注备注备注备注备注备注备注备注备注...",
+        status: "待审批"
+      },
+      {
+        applicant: {
+          name: "张三",
+          userId: "64f8b8b8b8b8b8b8b8b8b8b8"
+        },
+        project: {
+          name: "办公楼装修项目",
+          description: "对公司办公楼进行装修升级"
+        },
+        contract: {
+          name: "办公楼装修合同",
+          type: "工程合同",
+          partyA: {
+            name: "某装饰公司",
+            contact: "13800138003"
+          },
+          partyB: {
+            name: "某建筑公司",
+            contact: "13800138004"
+          },
+          startDate: "2021-09-01",
+          endDate: "2021-10-31",
+          paymentTerms: "按进度付款"
+        },
+        financial: {
+          amountIncludingTax: 500000,
+          taxRate: 3,
+          taxAmount: 14563,
+          amountExcludingTax: 485437,
+          invoiceType: "增值税专用发票"
+        },
+        paymentPlan: [
+          {
+            date: "2021-09-15",
+            amount: 100000,
+            description: "预付款",
+            status: "已收款"
+          },
+          {
+            date: "2021-10-15",
+            amount: 200000,
+            description: "进度款",
+            status: "待收款"
+          }
+        ],
+        materials: [
+          {
+            name: "地板",
+            quantity: 100,
+            unit: "平方米",
+            unitPrice: 200,
+            totalPrice: 20000,
+            supplier: "某地板公司"
+          }
+        ],
+        remarks: "装修材料需要环保认证",
+        status: "草稿"
+      }
+    ];
+
+    const createdContracts = [];
+
+    for (const contractData of testContracts) {
+      const contract = new contractApplicationModel({
+        ...contractData,
+        createdBy: "64f8b8b8b8b8b8b8b8b8b8b8",
+        createdAt: new Date(
+          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+        ), // 随机创建时间
+      });
+
+      await contract.save();
+      createdContracts.push(contract);
+    }
+
+    console.log("成功创建", createdContracts.length, "个测试合同申请");
+    res.success(
+      {
+        message: `成功创建 ${createdContracts.length} 个测试合同申请`,
+        contracts: createdContracts,
+      },
+      "测试合同申请数据创建成功",
+      201
+    );
+  } catch (error) {
+    console.error("创建测试合同申请数据错误:", error);
+    res.error(error.message, "创建测试合同申请数据失败");
   }
 });
 

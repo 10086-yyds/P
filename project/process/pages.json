@@ -95,6 +95,20 @@
 				"navigationBarTitleText": "编辑项目",
 				"navigationStyle": "custom"
 			}
+		},
+		{
+			"path": "pages/contract/contract-management",
+			"style": {
+				"navigationBarTitleText": "合同管理",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/contract/contract-detail",
+			"style": {
+				"navigationBarTitleText": "合同详情",
+				"navigationStyle": "custom"
+			}
 		}
 	],
 	"globalStyle": {
