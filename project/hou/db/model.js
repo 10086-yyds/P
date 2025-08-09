@@ -1,20 +1,39 @@
-let mongoose = require("./database");
 
-let userSchema = new mongoose.Schema({
+const { mongoose } = require('./database');
+
+const userSchema = new mongoose.Schema({
+  // 密码强度等级
+  passwordStrength: {
+    type: String,
+    enum: ['weak', 'medium', 'strong'],
+    default: 'weak'
+  },
+
+  // 密码设置时间
+  passwordSetAt: {
+    type: Date,
+    default: Date.now
+  },
+
+  // （可选）是否已过期
+  passwordExpired: {
+    type: Boolean,
+    default: false
+  },
   username: {
     type: String,
-    required: true,
-    unique: true,
+    required: false,
+    unique: false,
   }, //姓名
   password: {
     type: String,
-    required: true,
+    required: false,
   },
   //密码
   email: {
     type: String,
-    required: true,
-    unique: true,
+    required: false,
+    unique: false,
   },
   //邮箱
   phone: {
@@ -42,11 +61,63 @@ let userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  // {{ AURA-X: Add - 添加验证码字段支持注册功能. }}
+  //验证码信息
+  verifyCode: {
+    code: {
+      type: String,
+      default: null
+    },
+    expireAt: {
+      type: Date,
+      default: null
+    }
+  },
+
+  // {{ AURA-X: Add - 添加第三方登录字段支持水滴聚合登录. }}
+  //第三方登录信息
+  thirdPartyId: {
+    type: String,
+    default: null,
+    unique: false,
+    sparse: true
+  },
+  thirdPartyPlatform: {
+    type: String,
+    default: null
+  },
+  thirdPartyInfo: {
+    openid: {
+      type: String,
+      default: null
+    },
+    nickname: {
+      type: String,
+      default: null
+    },
+    avatar: {
+      type: String,
+      default: null
+    },
+    platform: {
+      type: String,
+      default: null
+    },
+    loginAt: {
+      type: Date,
+      default: null
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null
+    }
+  }
 });
 
-let userModel = mongoose.model("user", userSchema, "user");
 
-let processSchema = new mongoose.Schema({
+const userModel = mongoose.model("user", userSchema, "user");
+
+const processSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
@@ -118,7 +189,7 @@ let processSchema = new mongoose.Schema({
   },
 });
 
-let processModel = mongoose.model("process", processSchema, "process");
+const processModel = mongoose.model("process", processSchema, "process");
 
 const roleSchema = new mongoose.Schema({
   name: {
@@ -143,6 +214,9 @@ const roleSchema = new mongoose.Schema({
     default: [],
   },
 });
+
+
+const roleModel = mongoose.model("role", roleSchema, "role");
 
 module.exports = {
   userModel,

@@ -56,8 +56,8 @@ const development = {
   database: {
     ...baseConfig.database,
     // 开发环境使用环境变量或本地数据库
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/bookkeeping_dev',
-    name: process.env.DB_NAME || 'bookkeeping_dev'
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hou_dev',
+    name: process.env.DB_NAME || 'hou_dev'
   },
   logging: {
     level: 'debug',
@@ -65,7 +65,11 @@ const development = {
   },
   security: {
     ...baseConfig.security,
-    sessionSecret: process.env.SESSION_SECRET || 'dev-secret-key'
+    sessionSecret: process.env.SESSION_SECRET || 'dev-secret-key',
+    cors: {
+      origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+      credentials: true
+    }
   }
 };
 
@@ -78,11 +82,11 @@ const production = {
   },
   database: {
     ...baseConfig.database,
-    // 生产环境使用环境变量或默认 MongoDB Atlas
-    uri: process.env.MONGODB_URI || 'mongodb+srv://2732849023:kV2y2TU4cYPq6Y9C@cluster0.plvxg2d.mongodb.net/bookkeeping',
+    // 生产环境使用环境变量
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hou_prod',
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 27017,
-    name: process.env.DB_NAME || 'bookkeeping',
+    name: process.env.DB_NAME || 'hou_prod',
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD
   },
@@ -110,8 +114,8 @@ const test = {
   database: {
     ...baseConfig.database,
     // 测试环境使用环境变量或本地测试数据库
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/bookkeeping_test',
-    name: process.env.DB_NAME || 'bookkeeping_test'
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hou_test',
+    name: process.env.DB_NAME || 'hou_test'
   },
   logging: {
     level: 'error',

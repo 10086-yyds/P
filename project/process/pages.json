@@ -25,10 +25,34 @@
 			}
 		},
 		{
+			"path": "pages/mine/editInfo",
+			"style": {
+				"navigationBarTitleText": "编辑信息"
+			}
+		},
+		{
 			"path": "pages/todo/todo-detail",
 			"style": {
 				"navigationBarTitleText": "待办详情",
 				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path":"pages/system/system",
+			"style": {
+				"navigationBarTitleText": "系统页面"
+			}
+		},
+		{
+			"path":"pages/system/updatePassword",
+			"style": {
+				"navigationBarTitleText": "修改密码"
+			}
+		},
+		{
+			"path":"pages/system/about",
+			"style": {
+				"navigationBarTitleText": "关于"
 			}
 		}
 	],

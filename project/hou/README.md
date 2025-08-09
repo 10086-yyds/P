@@ -11,10 +11,10 @@
 
 ## 数据库配置
 
-项目使用 MongoDB Atlas 云数据库：
-- **开发环境**: `bookkeeping_dev` 数据库
-- **生产环境**: `bookkeeping` 数据库  
-- **测试环境**: `bookkeeping_test` 数据库
+项目使用 MongoDB 数据库：
+- **开发环境**: `hou_dev` 数据库
+- **生产环境**: `hou_prod` 数据库  
+- **测试环境**: `hou_test` 数据库
 
 ## 安装依赖
 
@@ -31,7 +31,7 @@ npm run dev
 - 使用 nodemon 自动重启
 - 详细调试日志
 - 端口 3000
-- 连接 `bookkeeping_dev` 数据库
+- 连接 `hou_dev` 数据库
 
 ### 生产环境
 ```bash
@@ -40,7 +40,7 @@ npm start
 - 生产优化配置
 - 安全头设置
 - 错误处理优化
-- 连接 `bookkeeping` 数据库
+- 连接 `hou_prod` 数据库
 
 ### 测试环境
 ```bash
@@ -48,7 +48,7 @@ npm test
 ```
 - 端口 3001
 - 最小日志输出
-- 连接 `bookkeeping_test` 数据库
+- 连接 `hou_test` 数据库
 
 ### 调试模式
 ```bash
@@ -68,13 +68,13 @@ NODE_ENV=development
 # 服务器配置
 PORT=3000
 
-# MongoDB Atlas 配置
-MONGODB_URI=mongodb+srv://2732849023:kV2y2TU4cYPq6Y9C@cluster0.plvxg2d.mongodb.net/bookkeeping
+# MongoDB 配置
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database_name
 
 # 数据库配置 (生产环境备用)
 DB_HOST=localhost
 DB_PORT=27017
-DB_NAME=bookkeeping
+DB_NAME=hou_db
 DB_USERNAME=your_username
 DB_PASSWORD=your_password
 
@@ -110,6 +110,7 @@ ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 项目包含以下数据模型：
 - **User**: 用户信息
 - **Transaction**: 记账交易记录
+- **其他模块**: jbh, lz, wxy, zjf 等子模块
 
 ## 项目结构
 
@@ -123,11 +124,18 @@ hou/
 ├── bin/
 │   └── www               # 服务器启动文件
 ├── routes/               # 路由文件
+│   ├── index.js         # 主路由
+│   ├── users.js         # 用户路由
+│   ├── jbh/             # jbh 模块路由
+│   ├── lz/              # lz 模块路由
+│   ├── wxy/             # wxy 模块路由
+│   └── zjf/             # zjf 模块路由
 ├── views/                # 视图模板
 ├── public/               # 静态文件
 ├── app.js               # 应用主文件
 ├── package.json         # 项目配置
-└── env.example          # 环境变量示例
+├── env.example          # 环境变量示例
+└── .env                 # 环境变量文件（需要创建）
 ```
 
 ## 数据库连接状态

@@ -3,10 +3,20 @@
  * 基于 uni.request 进行二次封装
  */
 
+/**
+ * 获取基础URL
+ * 支持多环境配置
+ */
+function getBaseUrl() {
+  // 强制指向后端API服务器端口
+  console.log('BASE_URL 初始化:', 'http://localhost:3000')
+  return 'http://localhost:3000'
+}
+
 // 配置常量
 const CONFIG = {
-  // API基础地址 - 可通过环境变量配置
-  BASE_URL: process.env.VUE_APP_API_BASE_URL || 'http://localhost:3000',
+  // API基础地址 - 修复uni-app环境下的配置
+  BASE_URL: getBaseUrl(),
 
   // 请求超时时间 (毫秒)
   TIMEOUT: 10000,
@@ -110,8 +120,15 @@ class Request {
    */
   async request(options = {}) {
     // 合并默认配置
+    const finalUrl = options.url ? (CONFIG.BASE_URL + options.url) : CONFIG.BASE_URL
+    console.log('请求配置:', {
+      originalUrl: options.url,
+      baseUrl: CONFIG.BASE_URL,
+      finalUrl: finalUrl
+    })
+    
     const config = {
-      url: CONFIG.BASE_URL + (options.url || ''),
+      url: finalUrl,
       method: options.method || 'GET',
       data: options.data || {},
       header: {
@@ -144,9 +161,17 @@ class Request {
    * @param {Object} config 请求配置
    */
   makeRequest(config) {
+    console.log('makeRequest 收到的config:', config)
+    console.log('即将调用uni.request，URL:', config.url)
+    
     return new Promise((resolve, reject) => {
+      const requestConfig = {
+        ...config
+      }
+      console.log('uni.request 最终配置:', requestConfig)
+      
       uni.request({
-        ...config,
+        ...requestConfig,
         success: (res) => {
           // 检查HTTP状态码
           if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -313,11 +338,11 @@ request.interceptResponse(
   (response) => {
     console.log('收到响应:', response.statusCode, response.config.url)
 
-    // 假设后端返回格式为 { code: 200, data: {}, message: '' }
+    // 后端返回格式为 { success: true, code: 200, data: {}, message: '' }
     const { data } = response
 
-    if (data && data.code === 200) {
-      return data.data // 直接返回业务数据
+    if (data && (data.success === true || data.code === 200)) {
+      return data // 返回完整的响应数据
     } else {
       // 业务错误处理
       const message = data.message || '请求失败'
@@ -337,4 +362,4 @@ request.interceptResponse(
   }
 )
 
-export default request 
+export default request
