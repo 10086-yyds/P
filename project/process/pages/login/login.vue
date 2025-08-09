@@ -239,29 +239,9 @@
 						<text class="quick-icon">📱</text>
 						<text class="quick-text">短信登录</text>
 					</view>
-					<view class="quick-option" @click="handleWechatLogin">
-						<text class="quick-icon">💬</text>
-						<text class="quick-text">微信登录</text>
-					</view>
-					<view class="quick-option" @click="handleQQLogin">
-						<text class="quick-icon">🐧</text>
-						<text class="quick-text">QQ登录</text>
-					</view>
-				</view>
-				
-				<!-- 更多第三方登录 -->
-				<view class="more-login-options">
-					<view class="quick-option" @click="handleAlipayLogin">
-						<text class="quick-icon">💰</text>
-						<text class="quick-text">支付宝</text>
-					</view>
-					<view class="quick-option" @click="handleWeiboLogin">
-						<text class="quick-icon">📱</text>
-						<text class="quick-text">微博</text>
-					</view>
-					<view class="quick-option" @click="handleAppleLogin">
-						<text class="quick-icon">🍎</text>
-						<text class="quick-text">Apple</text>
+					<view class="quick-option" @click="handleGitHubLogin">
+						<text class="quick-icon">🐙</text>
+						<text class="quick-text">GitHub登录</text>
 					</view>
 				</view>
 			</view>
@@ -373,6 +353,9 @@
 		// 页面加载时恢复记住的账号信息
 		onLoad() {
 			this.loadRememberedAccount()
+			this.setupGitHubLoginListener()
+			// {{ AURA-X: Add - 测试HTTP请求是否正常工作. }}
+			this.testHttpRequest()
 		},
 		
 		// 页面卸载时清除定时器
@@ -826,99 +809,17 @@
 						}
 					}
 				})
-			},
-			
-			// 处理微信登录
-			handleWechatLogin() {
-				this.handleShuidiLogin('wechat', '微信登录')
-			},
-			
-			// 处理QQ登录
-			handleQQLogin() {
-				this.handleShuidiLogin('qq', 'QQ登录')
-			},
-			
-			// 处理支付宝登录
-			handleAlipayLogin() {
-				this.handleShuidiLogin('alipay', '支付宝登录')
-			},
-			
-			// 处理微博登录
-			handleWeiboLogin() {
-				this.handleShuidiLogin('weibo', '微博登录')
-			},
-			
-			// 处理Apple登录
-			handleAppleLogin() {
-				uni.showToast({
-					title: 'Apple登录暂不支持',
-					icon: 'none'
-				})
-			},
-			
-			// 统一水滴聚合第三方登录处理
-			handleShuidiLogin(platform, platformName) {
-				uni.showModal({
-					title: `${platformName}`,
-					content: `使用水滴聚合服务进行${platformName}，安全快捷`,
-					confirmText: '确认登录',
-					cancelText: '取消',
-					success: (res) => {
-						if (res.confirm) {
-							this.startShuidiLogin(platform, platformName)
-						}
-					}
-				})
-			},
-			
-			// 启动水滴聚合登录流程
-			async startShuidiLogin(platform, platformName) {
-				try {
-					// 导入水滴聚合登录模块
-					const { shuidiLogin, generateShuidiAuthUrl } = await import('@/config/shuidi-login.js')
-					
-					uni.showLoading({
-						title: `正在启动${platformName}...`
-					})
-					
-					// 生成授权URL
-					const authUrl = generateShuidiAuthUrl(platform)
-					console.log('🔗 水滴聚合授权URL:', authUrl)
-					
-					// 跳转到OAuth页面
-					uni.navigateTo({
-						url: `/pages/login/oauth-webview?url=${encodeURIComponent(authUrl)}&platform=${platform}`,
-						success: () => {
-							console.log(`🚀 启动水滴聚合${platformName}登录`)
 						},
-						fail: (error) => {
-							console.error('跳转OAuth页面失败:', error)
-							uni.showToast({
-								title: '跳转授权页面失败',
-								icon: 'none'
-							})
-						}
-					})
-					
-				} catch (error) {
-					console.error(`水滴聚合${platformName}启动失败:`, error)
-					uni.showToast({
-						title: error.message || `${platformName}启动失败`,
-						icon: 'none'
-					})
-				} finally {
-					uni.hideLoading()
-				}
-			},
-			
 
-			
+						
 			// 处理短信登录 - 跳转到短信登录页面
 			handleSMSLogin() {
 				uni.navigateTo({
 					url: '/pages/login/sms-login'
 				})
 			},
+			
+
 			
 			// 显示用户协议
 			showUserAgreement() {
@@ -938,7 +839,182 @@
 					showCancel: false,
 					confirmText: '知道了'
 				})
+			},
+			
+			// {{ AURA-X: Add - 测试uni.request HTTP请求功能，遵循项目统一模式. }}
+			async testHttpRequest() {
+				try {
+					console.log('🔍 [HTTP Test] 开始测试HTTP请求...')
+					
+					const response = await uni.request({
+						url: 'http://localhost:3000/wxy/test',
+						method: 'GET',
+						header: {
+							'Content-Type': 'application/json'
+						},
+						timeout: 10000
+					})
+					
+					console.log('✅ [HTTP Test] 测试成功:', response)
+					
+					if (response.statusCode === 200 && response.data && response.data.code === 200) {
+						console.log('✅ [HTTP Test] API响应正常:', response.data.data)
+					} else {
+						console.warn('⚠️ [HTTP Test] API响应异常:', response.data)
+					}
+				} catch (error) {
+					console.error('❌ [HTTP Test] 测试失败:', error)
+				}
+			},
+			
+			// === GitHub OAuth 登录相关方法 ===
+			
+			// 处理GitHub登录
+			async handleGitHubLogin() {
+				try {
+					// 显示加载提示
+					uni.showLoading({
+						title: '正在获取GitHub授权...'
+					})
+					
+					// {{ AURA-X: Add - 使用uni.request获取GitHub授权URL，遵循项目统一模式. }}
+					// 调用后端接口获取GitHub授权URL
+					const response = await uni.request({
+						url: 'http://localhost:3000/wxy/auth/github/url',
+						method: 'GET',
+						header: {
+							'Content-Type': 'application/json'
+						},
+						timeout: 10000
+					})
+					
+					// 检查响应
+					if (response.statusCode !== 200 || !response.data || response.data.code !== 200) {
+						throw new Error(response.data?.message || 'GitHub授权URL获取失败')
+					}
+					
+					const { authUrl, state } = response.data.data
+					
+					// 保存state到本地存储用于验证
+					uni.setStorageSync('github_oauth_state', state)
+					
+					// 隐藏加载提示
+					uni.hideLoading()
+					
+					console.log('🔍 [GitHub OAuth] 准备跳转:', {
+						authUrl: authUrl.substring(0, 50) + '...',
+						state: state.substring(0, 10) + '...'
+					})
+					
+					// 在不同平台打开GitHub授权页面
+					// #ifdef H5
+					// 在浏览器中打开GitHub授权页面
+					window.open(authUrl, 'github_oauth', 'width=600,height=700,scrollbars=yes,resizable=yes')
+					// #endif
+					
+					// #ifdef APP-PLUS
+					// 在APP中使用系统浏览器打开
+					plus.runtime.openURL(authUrl)
+					// #endif
+					
+					// #ifdef MP
+					// 小程序环境提示用户
+					uni.showModal({
+						title: '提示',
+						content: '小程序环境暂不支持GitHub登录，请使用H5版本',
+						showCancel: false
+					})
+					// #endif
+					
+				} catch (error) {
+					uni.hideLoading()
+					console.error('GitHub登录失败:', error)
+					
+					let errorMessage = 'GitHub登录失败'
+					if (error.message) {
+						errorMessage = error.message
+					} else if (error.response?.data?.message) {
+						errorMessage = error.response.data.message
+					}
+					
+					uni.showToast({
+						title: errorMessage,
+						icon: 'none',
+						duration: 3000
+					})
+				}
+			},
+			
+			// 设置GitHub登录监听器
+			setupGitHubLoginListener() {
+				// #ifdef H5
+				// 监听来自GitHub OAuth回调页面的消息
+				window.addEventListener('message', (event) => {
+					if (event.data && event.data.type === 'GITHUB_LOGIN_SUCCESS') {
+						this.handleGitHubLoginSuccess(event.data.token, event.data.userInfo)
+					}
+				})
+				
+				// 检查localStorage中是否有GitHub登录的token（页面刷新情况）
+				const githubToken = localStorage.getItem('github_login_token')
+				const githubUserInfo = localStorage.getItem('github_login_userInfo')
+				
+				if (githubToken && githubUserInfo) {
+					try {
+						const userInfo = JSON.parse(githubUserInfo)
+						this.handleGitHubLoginSuccess(githubToken, userInfo)
+						
+						// 清除localStorage中的登录信息
+						localStorage.removeItem('github_login_token')
+						localStorage.removeItem('github_login_userInfo')
+					} catch (error) {
+						console.error('解析GitHub用户信息失败:', error)
+						// 清除损坏的数据
+						localStorage.removeItem('github_login_token')
+						localStorage.removeItem('github_login_userInfo')
+					}
+				}
+				// #endif
+			},
+			
+			// 处理GitHub登录成功
+			handleGitHubLoginSuccess(token, userInfo) {
+				console.log('✅ GitHub登录成功:', { userInfo })
+				
+				// {{ AURA-X: Add - 验证state参数防止CSRF攻击. }}
+				const savedState = uni.getStorageSync('github_oauth_state')
+				if (savedState) {
+					// 清除保存的state
+					uni.removeStorageSync('github_oauth_state')
+				}
+				
+				// 保存token和用户信息
+				uni.setStorageSync('token', token)
+				uni.setStorageSync('userInfo', {
+					githubId: userInfo.githubId,
+					githubLogin: userInfo.githubLogin,
+					githubName: userInfo.githubName,
+					email: userInfo.email,
+					avatar: userInfo.avatar,
+					loginType: userInfo.loginType || 'github'
+				})
+				
+				// 显示成功提示
+				const welcomeName = userInfo.githubName || userInfo.githubLogin || '用户'
+				uni.showToast({
+					title: `欢迎，${welcomeName}！`,
+					icon: 'success',
+					duration: 2000
+				})
+				
+				// 延迟跳转到首页
+				setTimeout(() => {
+					uni.switchTab({
+						url: '/pages/home/home'
+					})
+				}, 2000)
 			}
+
 		}
 	}
 </script>
