@@ -180,7 +180,7 @@ export default {
         { name: "项目搜索", icon: "🔍", type: "search-project" },
         { name: "团队管理", icon: "👥", type: "team-management" },
         { name: "文档中心", icon: "📁", type: "document-center" },
-        { name: "会议安排", icon: "📅", type: "meeting-schedule" },
+        { name: "合同管理", icon: "📄", type: "contract-management" },
         { name: "修改进度", icon: "📈", type: "project-check" },
       ],
       monthlyStats: {
@@ -1280,8 +1280,8 @@ export default {
           case 'document-center':
             this.navigateToDocumentCenter();
             break;
-          case 'meeting-schedule':
-            this.navigateToMeetingSchedule();
+          case 'contract-management':
+            this.navigateToContractManagement();
             break;
           case 'project-check':
             this.navigateToQualityCheck();
@@ -1660,18 +1660,18 @@ export default {
       });
     },
 
-    // 会议安排导航
-    navigateToMeetingSchedule() {
+    // 合同管理导航
+    navigateToContractManagement() {
       uni.navigateTo({
-        url: '/pages/meeting/meeting-schedule',
+        url: '/pages/contract/contract-management',
         success: () => {
-          console.log('跳转到会议安排页面成功');
+          console.log('跳转到合同管理页面成功');
         },
         fail: (err) => {
-          console.error('跳转到会议安排页面失败:', err);
+          console.error('跳转到合同管理页面失败:', err);
           uni.showModal({
             title: '提示',
-            content: '会议安排页面正在开发中，敬请期待！',
+            content: '合同管理页面正在开发中，敬请期待！',
             showCancel: false
           });
         }
@@ -2057,7 +2057,7 @@ export default {
         'project': '📊',
         'document': '📁',
         'todo': '📝',
-        'meeting': '📅',
+        'contract': '📄',
         'approval': '📋',
         'check': '✅',
         'default': '📄'

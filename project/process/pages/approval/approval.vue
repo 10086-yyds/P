@@ -67,6 +67,10 @@
 						<text class="detail-label">合同类型：</text>
 						<text class="detail-value">{{ item.contractType }}</text>
 					</view>
+					<view class="item-detail" v-if="item.amount">
+						<text class="detail-label">合同金额：</text>
+						<text class="detail-value amount">¥{{ formatAmount(item.amount) }}</text>
+					</view>
 				</view>
 
 				<view class="item-footer">
@@ -114,142 +118,28 @@
 				searchKeyword: '',
 				loading: false,
 				hasMore: true,
+				page: 1,
+				limit: 10,
 				tabs: [
 					{ name: '待审批', key: 'pending' },
 					{ name: '已处理', key: 'processed' },
 					{ name: '抄送我的', key: 'copied' },
 					{ name: '我发起的', key: 'initiated' }
 				],
-				// 模拟数据
+				// 审批数据
 				approvalData: {
-					pending: [
-						{
-							id: 1,
-							title: '合同申请',
-							time: '10:01',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'pending',
-							statusText: '待审批'
-						},
-						{
-							id: 2,
-							title: '采购申请',
-							time: '10:01',
-							company: '某兰公园一区改造工程CG001',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'pending',
-							statusText: '待审批'
-						}
-					],
-					processed: [
-						{
-							id: 3,
-							title: '合同申请',
-							time: '07.23',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'approved',
-							statusText: '已通过'
-						},
-						{
-							id: 4,
-							title: '采购执行单',
-							time: '2020.07.21',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'rejected',
-							statusText: '已驳回'
-						},
-						{
-							id: 5,
-							title: '采购执行单',
-							time: '2020.07.20',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'cancelled',
-							statusText: '已撤销'
-						}
-					],
-					copied: [
-						{
-							id: 6,
-							title: '合同申请',
-							time: '07.23',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'approved',
-							statusText: '已通过'
-						},
-						{
-							id: 7,
-							title: '采购申请',
-							time: '2020.07.21',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'rejected',
-							statusText: '已驳回'
-						}
-					],
-					initiated: [
-						{
-							id: 8,
-							title: '合同申请',
-							time: '07.23',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'approved',
-							statusText: '已通过'
-						},
-						{
-							id: 9,
-							title: '采购执行单',
-							time: '2020.07.21',
-							company: '某兰公园一区改造工程HT005',
-							contractName: '大大建设对外合同',
-							contractType: '对申合同',
-							applicant: '李想',
-							action: '提交',
-							status: 'rejected',
-							statusText: '已驳回'
-						},
-						{
-							id: 10,
-							title: '客户申请',
-							time: '2020.07.20',
-							company: '大大建设',
-							contractName: '水电安装',
-							contractType: '对申合同',
-							applicant: '童鼎威',
-							action: '提交',
-							status: 'cancelled',
-							statusText: '已撤销'
-						}
-					]
+					pending: [],
+					processed: [],
+					copied: [],
+					initiated: []
+				},
+				// 统计数据
+				stats: {
+					total: 0,
+					draft: 0,
+					pending: 0,
+					approved: 0,
+					rejected: 0
 				}
 			}
 		},
@@ -278,12 +168,179 @@
 			// 切换标签页
 			switchTab(index) {
 				this.currentTab = index;
+				this.page = 1; // 重置页码
+				this.hasMore = true; // 重置加载更多状态
+				this.loadApprovalData();
 			},
 			
 			// 搜索
 			onSearch() {
 				// 实际项目中这里可以添加防抖逻辑
 				console.log('搜索关键词：', this.searchKeyword);
+				this.page = 1; // 重置页码
+				this.hasMore = true; // 重置加载更多状态
+				this.loadApprovalData();
+			},
+			
+			// 加载审批数据
+			async loadApprovalData() {
+				try {
+					this.loading = true;
+					
+					const tabKey = this.tabs[this.currentTab].key;
+					
+					// 暂时使用模拟数据，等API连接问题解决后再切换
+					console.log('使用模拟数据，当前标签:', tabKey);
+					
+					// 模拟API延迟
+					await new Promise(resolve => setTimeout(resolve, 500));
+					
+					// 模拟数据
+					const mockData = {
+						pending: [
+							{
+								id: '1',
+								title: '合同申请',
+								time: this.formatDate(new Date()),
+								company: '某兰公园一区改造工程',
+								contractName: '大大建设对外合同',
+								contractType: '工程合同',
+								applicant: '李想',
+								action: '提交',
+								status: '待审批',
+								statusText: '待审批',
+								amount: 100000,
+								originalData: {}
+							},
+							{
+								id: '2',
+								title: '合同申请',
+								time: this.formatDate(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+								company: '办公楼装修项目',
+								contractName: '装修工程合同',
+								contractType: '工程合同',
+								applicant: '张三',
+								action: '提交',
+								status: '待审批',
+								statusText: '待审批',
+								amount: 500000,
+								originalData: {}
+							}
+						],
+						processed: [
+							{
+								id: '3',
+								title: '合同申请',
+								time: this.formatDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+								company: '数据分析系统项目',
+								contractName: '软件开发合同',
+								contractType: '服务合同',
+								applicant: '王五',
+								action: '提交',
+								status: '已批准',
+								statusText: '已通过',
+								amount: 200000,
+								originalData: {}
+							}
+						],
+						copied: [
+							{
+								id: '4',
+								title: '合同申请',
+								time: this.formatDate(new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)),
+								company: '客户管理系统',
+								contractName: 'CRM系统开发合同',
+								contractType: '服务合同',
+								applicant: '赵六',
+								action: '提交',
+								status: '已批准',
+								statusText: '已通过',
+								amount: 300000,
+								originalData: {}
+							}
+						],
+						initiated: [
+							{
+								id: '5',
+								title: '合同申请',
+								time: this.formatDate(new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)),
+								company: '员工培训系统',
+								contractName: '培训系统开发合同',
+								contractType: '服务合同',
+								applicant: '孙七',
+								action: '提交',
+								status: '草稿',
+								statusText: '草稿',
+								amount: 150000,
+								originalData: {}
+							}
+						]
+					};
+					
+					// 根据搜索关键词过滤
+					let filteredData = mockData[tabKey] || [];
+					if (this.searchKeyword) {
+						filteredData = filteredData.filter(item => 
+							item.title.includes(this.searchKeyword) ||
+							item.company.includes(this.searchKeyword) ||
+							item.contractName.includes(this.searchKeyword)
+						);
+					}
+					
+					// 如果是第一页，直接替换数据；否则追加数据
+					if (this.page === 1) {
+						this.approvalData[tabKey] = filteredData;
+					} else {
+						this.approvalData[tabKey] = [...this.approvalData[tabKey], ...filteredData];
+					}
+					
+					console.log('模拟数据加载完成:', filteredData.length, '条记录');
+					
+				} catch (error) {
+					console.error('加载审批数据错误:', error);
+					uni.showToast({
+						title: '加载失败',
+						icon: 'none'
+					});
+				} finally {
+					this.loading = false;
+				}
+			},
+			
+			// 格式化日期
+			formatDate(dateString) {
+				if (!dateString) return '';
+				const date = new Date(dateString);
+				const now = new Date();
+				const diff = now - date;
+				const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+				
+				if (days === 0) {
+					return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+				} else if (days < 7) {
+					return `${days}天前`;
+				} else {
+					return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+				}
+			},
+			
+			// 获取状态文本
+			getStatusText(status) {
+				const statusMap = {
+					'草稿': '草稿',
+					'待审批': '待审批',
+					'审批中': '审批中',
+					'已批准': '已通过',
+					'已拒绝': '已驳回',
+					'已取消': '已撤销'
+				};
+				return statusMap[status] || status;
+			},
+			
+			// 格式化金额
+			formatAmount(amount) {
+				if (!amount) return '0';
+				return amount.toLocaleString();
 			},
 			
 			// 跳转到详情页
@@ -300,7 +357,6 @@
 					content: '确定要通过该审批吗？',
 					success: (res) => {
 						if (res.confirm) {
-							// 这里调用API处理审批
 							this.handleApproval(item.id, 'approve');
 						}
 					}
@@ -314,7 +370,6 @@
 					content: '确定要驳回该审批吗？',
 					success: (res) => {
 						if (res.confirm) {
-							// 这里调用API处理审批
 							this.handleApproval(item.id, 'reject');
 						}
 					}
@@ -322,26 +377,44 @@
 			},
 			
 			// 处理审批
-			handleApproval(id, action) {
-				uni.showLoading({ title: '处理中...' });
-				
-				// 模拟API调用
-				setTimeout(() => {
+			async handleApproval(id, action) {
+				try {
+					uni.showLoading({ title: '处理中...' });
+					
+					// 模拟API延迟
+					await new Promise(resolve => setTimeout(resolve, 1000));
+					
 					uni.hideLoading();
+					
+					// 模拟审批操作
+					const tabKey = this.tabs[this.currentTab].key;
+					const itemIndex = this.approvalData[tabKey].findIndex(item => item.id === id);
+					
+					if (itemIndex !== -1) {
+						const item = this.approvalData[tabKey][itemIndex];
+						item.status = action === 'approve' ? '已批准' : '已拒绝';
+						item.statusText = action === 'approve' ? '已通过' : '已驳回';
+						
+						// 从待审批列表移除
+						this.approvalData[tabKey].splice(itemIndex, 1);
+						
+						// 添加到已处理列表
+						this.approvalData.processed.unshift(item);
+					}
+					
 					uni.showToast({
 						title: action === 'approve' ? '审批通过' : '审批驳回',
 						icon: 'success'
 					});
 					
-					// 移除待审批列表中的项目
-					const index = this.approvalData.pending.findIndex(item => item.id === id);
-					if (index !== -1) {
-						const item = this.approvalData.pending.splice(index, 1)[0];
-						item.status = action === 'approve' ? 'approved' : 'rejected';
-						item.statusText = action === 'approve' ? '已通过' : '已驳回';
-						this.approvalData.processed.unshift(item);
-					}
-				}, 1000);
+				} catch (error) {
+					uni.hideLoading();
+					console.error('审批操作错误:', error);
+					uni.showToast({
+						title: '操作失败',
+						icon: 'none'
+					});
+				}
 			},
 			
 			// 获取状态样式类
@@ -356,20 +429,72 @@
 			},
 			
 			// 加载更多
-			loadMore() {
+			async loadMore() {
 				if (this.loading || !this.hasMore) return;
 				
 				this.loading = true;
-				// 模拟加载更多数据
-				setTimeout(() => {
+				this.page += 1;
+				
+				try {
+					await this.loadApprovalData();
+					
+					// 检查是否还有更多数据
+					const currentList = this.currentList;
+					if (currentList.length < this.limit) {
+						this.hasMore = false;
+					}
+				} catch (error) {
+					console.error('加载更多数据错误:', error);
+					this.page -= 1; // 恢复页码
+				} finally {
 					this.loading = false;
-					// 这里可以添加更多数据加载逻辑
-				}, 1000);
+				}
+			},
+			
+			// 加载统计数据
+			async loadStats() {
+				try {
+					console.log('开始加载统计数据...');
+					
+					// 模拟API延迟
+					await new Promise(resolve => setTimeout(resolve, 300));
+					
+					// 模拟统计数据
+					this.stats = {
+						total: 5,
+						draft: 1,
+						pending: 2,
+						approved: 2,
+						rejected: 0
+					};
+					
+					console.log('统计数据加载完成:', this.stats);
+				} catch (error) {
+					console.error('加载统计数据错误:', error);
+				}
 			}
 		},
 		
 		onLoad() {
 			// 页面加载时的初始化
+			console.log('页面加载，开始初始化...');
+			this.loadApprovalData();
+			this.loadStats();
+		},
+		
+		// 页面显示时刷新数据
+		onShow() {
+			// 检查是否有从合同详情页面传递的数据
+			const app = getApp();
+			if (app.globalData && app.globalData.contractForApproval) {
+				console.log('收到合同审批数据:', app.globalData.contractForApproval);
+				// 可以在这里处理传递的合同数据
+				// 比如自动切换到待审批标签页
+				this.currentTab = 0; // 切换到待审批
+				this.loadApprovalData();
+				// 清除全局数据
+				delete app.globalData.contractForApproval;
+			}
 		}
 	}
 </script>
@@ -568,6 +693,11 @@
 					
 					.detail-value {
 						color: #333;
+						
+						&.amount {
+							color: #e74c3c;
+							font-weight: bold;
+						}
 					}
 				}
 			}

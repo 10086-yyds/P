@@ -335,8 +335,423 @@ const roleSchema = new mongoose.Schema({
 
 const roleModel = mongoose.model("role", roleSchema, "role");
 
+// 合同申请模型
+const contractApplicationSchema = new mongoose.Schema({
+  // 申请人信息
+  applicant: {
+    name: {
+      type: String,
+      required: [true, '申请人姓名是必需的'],
+      trim: true,
+      maxlength: 50
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "user",
+      required: true
+    }
+  },
+  
+  // 项目信息
+  project: {
+    name: {
+      type: String,
+      required: [true, '项目名称是必需的'],
+      trim: true,
+      maxlength: 200
+    },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 1000
+    }
+  },
+  
+  // 合同基本信息
+  contract: {
+    name: {
+      type: String,
+      required: [true, '合同名称是必需的'],
+      trim: true,
+      maxlength: 200
+    },
+    type: {
+      type: String,
+      required: [true, '合同类型是必需的'],
+      enum: ['工程合同', '采购合同', '服务合同', '其他'],
+      default: '工程合同'
+    },
+    partyA: {
+      name: {
+        type: String,
+        required: [true, '甲方单位是必需的'],
+        trim: true,
+        maxlength: 200
+      },
+      contact: {
+        type: String,
+        trim: true,
+        maxlength: 100
+      }
+    },
+    partyB: {
+      name: {
+        type: String,
+        required: [true, '乙方单位是必需的'],
+        trim: true,
+        maxlength: 200
+      },
+      contact: {
+        type: String,
+        trim: true,
+        maxlength: 100
+      }
+    },
+    startDate: {
+      type: Date,
+      required: [true, '开始日期是必需的']
+    },
+    endDate: {
+      type: Date,
+      required: [true, '结束日期是必需的']
+    },
+    paymentTerms: {
+      type: String,
+      trim: true,
+      maxlength: 500
+    }
+  },
+  
+  // 财务信息
+  financial: {
+    amountIncludingTax: {
+      type: Number,
+      required: [true, '含税金额是必需的'],
+      min: 0
+    },
+    taxRate: {
+      type: Number,
+      required: [true, '税率是必需的'],
+      min: 0,
+      max: 100
+    },
+    taxAmount: {
+      type: Number,
+      required: [true, '税额是必需的'],
+      min: 0
+    },
+    amountExcludingTax: {
+      type: Number,
+      required: [true, '不含税金额是必需的'],
+      min: 0
+    },
+    invoiceType: {
+      type: String,
+      required: [true, '发票类型是必需的'],
+      enum: ['增值税普通发票(蓝)', '增值税专用发票', '其他'],
+      default: '增值税普通发票(蓝)'
+    }
+  },
+  
+  // 收款计划
+  paymentPlan: [{
+    date: {
+      type: Date,
+      required: true
+    },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 200
+    },
+    status: {
+      type: String,
+      enum: ['待收款', '已收款', '逾期'],
+      default: '待收款'
+    }
+  }],
+  
+  // 材料清单
+  materials: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 100
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    unit: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 20
+    },
+    unitPrice: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    totalPrice: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    supplier: {
+      type: String,
+      trim: true,
+      maxlength: 200
+    }
+  }],
+  
+  // 附件
+  attachments: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 200
+    },
+    url: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    size: {
+      type: Number,
+      min: 0
+    },
+    type: {
+      type: String,
+      trim: true,
+      maxlength: 50
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    },
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "user"
+    }
+  }],
+  
+  // 备注
+  remarks: {
+    type: String,
+    trim: true,
+    maxlength: 2000
+  },
+  
+  // 申请状态
+  status: {
+    type: String,
+    enum: ['草稿', '待审批', '审批中', '已批准', '已拒绝', '已取消'],
+    default: '草稿',
+    index: true
+  },
+  
+  // 审批流程
+  approval: {
+    currentLevel: {
+      type: Number,
+      default: 1
+    },
+    totalLevels: {
+      type: Number,
+      default: 1
+    },
+    approvers: [{
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user"
+      },
+      level: {
+        type: Number,
+        required: true
+      },
+      status: {
+        type: String,
+        enum: ['待审批', '已批准', '已拒绝'],
+        default: '待审批'
+      },
+      comments: {
+        type: String,
+        trim: true,
+        maxlength: 500
+      },
+      approvedAt: {
+        type: Date
+      }
+    }],
+    approvedAt: {
+      type: Date
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "user"
+    },
+    rejectedAt: {
+      type: Date
+    },
+    rejectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "user"
+    },
+    rejectionReason: {
+      type: String,
+      trim: true,
+      maxlength: 500
+    }
+  },
+  
+  // 创建人
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "user",
+    required: true,
+    index: true
+  },
+  
+  // 更新人
+  updatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "user"
+  },
+  
+  // 创建时间
+  createdAt: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  
+  // 更新时间
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  },
+  
+  // 删除人
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "user"
+  },
+  
+  // 删除时间
+  deletedAt: {
+    type: Date,
+    default: null
+  },
+  
+  // 是否删除
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    index: true
+  }
+});
+
+// 合同申请模型索引
+contractApplicationSchema.index({ status: 1, isDeleted: 1 });
+contractApplicationSchema.index({ 'applicant.userId': 1, isDeleted: 1 });
+contractApplicationSchema.index({ 'contract.startDate': 1, isDeleted: 1 });
+contractApplicationSchema.index({ 'contract.endDate': 1, isDeleted: 1 });
+contractApplicationSchema.index({ 'financial.amountIncludingTax': 1, isDeleted: 1 });
+contractApplicationSchema.index({ createdAt: 1, isDeleted: 1 });
+
+// 合同申请模型方法
+contractApplicationSchema.methods.submitForApproval = function() {
+  this.status = '待审批';
+  this.updatedAt = new Date();
+  return this.save();
+};
+
+contractApplicationSchema.methods.approve = function(userId, comments) {
+  this.status = '已批准';
+  this.approval.approvedAt = new Date();
+  this.approval.approvedBy = userId;
+  this.updatedAt = new Date();
+  
+  // 更新当前审批人的状态
+  const currentApprover = this.approval.approvers.find(a => a.userId.equals(userId));
+  if (currentApprover) {
+    currentApprover.status = '已批准';
+    currentApprover.comments = comments;
+    currentApprover.approvedAt = new Date();
+  }
+  
+  return this.save();
+};
+
+contractApplicationSchema.methods.reject = function(userId, reason) {
+  this.status = '已拒绝';
+  this.approval.rejectedAt = new Date();
+  this.approval.rejectedBy = userId;
+  this.approval.rejectionReason = reason;
+  this.updatedAt = new Date();
+  
+  // 更新当前审批人的状态
+  const currentApprover = this.approval.approvers.find(a => a.userId.equals(userId));
+  if (currentApprover) {
+    currentApprover.status = '已拒绝';
+    currentApprover.comments = reason;
+    currentApprover.approvedAt = new Date();
+  }
+  
+  return this.save();
+};
+
+contractApplicationSchema.methods.cancel = function(userId) {
+  this.status = '已取消';
+  this.updatedBy = userId;
+  this.updatedAt = new Date();
+  return this.save();
+};
+
+// 合同申请模型静态方法
+contractApplicationSchema.statics.findPendingApproval = function() {
+  return this.find({ 
+    status: { $in: ['待审批', '审批中'] },
+    isDeleted: false 
+  });
+};
+
+contractApplicationSchema.statics.findByApplicant = function(userId) {
+  return this.find({ 
+    'applicant.userId': userId, 
+    isDeleted: false 
+  });
+};
+
+contractApplicationSchema.statics.findByStatus = function(status) {
+  return this.find({ 
+    status: status,
+    isDeleted: false 
+  });
+};
+
+contractApplicationSchema.statics.findByDateRange = function(startDate, endDate) {
+  return this.find({
+    'contract.startDate': { $gte: startDate },
+    'contract.endDate': { $lte: endDate },
+    isDeleted: false
+  });
+};
+
+const contractApplicationModel = mongoose.model("contractApplication", contractApplicationSchema, "contractApplication");
+
 module.exports = {
   UserModel,
   processModel,
   roleModel,
+  contractApplicationModel,
 };
