@@ -1,7 +1,7 @@
-const mongoose = require('mongoose');
-const database = require('./database');
 
-let userSchema = new mongoose.Schema({
+const { mongoose } = require('./database');
+
+const userSchema = new mongoose.Schema({
   username: {
     type: String,
     required: false,
@@ -83,81 +83,230 @@ let userSchema = new mongoose.Schema({
 
 });
 
-let UserModel = mongoose.model("user", userSchema, "user");
 
-let processSchema = new mongoose.Schema({
+const UserModel = mongoose.model("user", userSchema, "user");
+
+const processSchema = new mongoose.Schema({
+  // 项目名称
   name: {
     type: String,
-    required: true,
+    required: [true, '项目名称是必需的'],
+    trim: true,
+    maxlength: 100
   },
-  //描述
-  description: {
+  // 项目简称
+  shortName: {
     type: String,
-    required: true,
+    required: [true, '项目简称是必需的'],
+    trim: true,
+    maxlength: 50
   },
-  //状态
+  // 项目类型
+  type: {
+    type: String,
+    required: [true, '项目类型是必需的'],
+    enum: ['development', 'research', 'maintenance', 'consulting', 'training', 'other'],
+    default: 'development'
+  },
+  // 项目编号
+  projectCode: {
+    type: String,
+    required: [true, '项目编号是必需的'],
+    unique: true,
+    trim: true,
+    maxlength: 20,
+    match: [/^[A-Z0-9-]+$/, '项目编号只能包含大写字母、数字和连字符']
+  },
+  // 项目状态
   status: {
     type: String,
-    default: "active",
+    enum: ['planning', 'active', 'on-hold', 'completed', 'cancelled'],
+    default: 'planning',
+    index: true
   },
-  //创建人
+  // 项目描述
+  description: {
+    type: String,
+    required: [true, '项目描述是必需的'],
+    trim: true,
+    maxlength: 1000
+  },
+  // 所属部门
+  department: {
+    type: String,
+    required: [true, '所属部门是必需的'],
+    trim: true,
+    maxlength: 100
+  },
+  // 项目优先级
+  priority: {
+    type: Number,
+    enum: [1, 2, 3, 4, 5],
+    default: 3,
+    index: true
+  },
+  // 工程进度（百分比）
+  progress: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: 0,
+    index: true
+  },
+  // 项目图片（数组）
+  images: [{
+    url: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    name: {
+      type: String,
+      trim: true,
+      maxlength: 100
+    },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 200
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    },
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "user"
+    }
+  }],
+  // 外部合作方
+  externalPartners: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 100
+    },
+    contact: {
+      type: String,
+      trim: true,
+      maxlength: 100
+    },
+    role: {
+      type: String,
+      trim: true,
+      maxlength: 100
+    }
+  }],
+  // 创建人
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "user",
+    required: true,
+    index: true
   },
-  //创建时间
+  // 更新人
+  updatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "user"
+  },
+  // 负责人
+  assignedTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "user"
+  },
+  // 创建时间
   createdAt: {
     type: Date,
     default: Date.now,
+    index: true
   },
-  //更新人
-  updatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "user",
-  },
-  //更新时间
+  // 更新时间
   updatedAt: {
     type: Date,
-    default: Date.now,
+    default: Date.now
   },
-  //删除人
+  // 完成时间
+  completedAt: {
+    type: Date,
+    default: null
+  },
+  // 删除人
   deletedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "user",
+    ref: "user"
   },
-  //删除时间
+  // 删除时间
   deletedAt: {
     type: Date,
-    default: Date.now,
+    default: null
   },
-  //是否删除
+  // 是否删除
   isDeleted: {
     type: Boolean,
     default: false,
-  },
-  //是否完成
-  isCompleted: {
-    type: Boolean,
-    default: false,
-  },
-  //完成时间
-  completedAt: {
-    type: Date,
-    default: null,
-  },
-  //是否取消
-  isCanceled: {
-    type: Boolean,
-    default: false,
-  },
-  //取消时间
-  canceledAt: {
-    type: Date,
-    default: null,
-  },
+    index: true
+  }
 });
 
-let processModel = mongoose.model("process", processSchema, "process");
+// 流程模型索引
+processSchema.index({ projectCode: 1 });
+processSchema.index({ status: 1, isDeleted: 1 });
+processSchema.index({ createdBy: 1, isDeleted: 1 });
+processSchema.index({ department: 1, isDeleted: 1 });
+processSchema.index({ type: 1, isDeleted: 1 });
+processSchema.index({ priority: 1, isDeleted: 1 });
+processSchema.index({ progress: 1, isDeleted: 1 });
+
+// 流程模型方法
+processSchema.methods.complete = function(userId) {
+  this.status = 'completed';
+  this.completedAt = new Date();
+  this.updatedBy = userId;
+  return this.save();
+};
+
+processSchema.methods.cancel = function(userId) {
+  this.status = 'cancelled';
+  this.updatedBy = userId;
+  return this.save();
+};
+
+processSchema.methods.isOverdue = function() {
+  // 可以根据项目类型和优先级计算是否逾期
+  return false;
+};
+
+// 流程模型静态方法
+processSchema.statics.findActive = function() {
+  return this.find({ 
+    status: { $in: ['planning', 'active'] },
+    isDeleted: false 
+  });
+};
+
+processSchema.statics.findByUser = function(userId) {
+  return this.find({ 
+    createdBy: userId, 
+    isDeleted: false 
+  });
+};
+
+processSchema.statics.findByDepartment = function(department) {
+  return this.find({ 
+    department: department,
+    isDeleted: false 
+  });
+};
+
+processSchema.statics.findByType = function(type) {
+  return this.find({ 
+    type: type,
+    isDeleted: false 
+  });
+};
+
+const processModel = mongoose.model("process", processSchema, "process");
 
 const roleSchema = new mongoose.Schema({
   name: {
@@ -182,7 +331,10 @@ const roleSchema = new mongoose.Schema({
     default: [],
   },
 });
-let roleModel = mongoose.model("role", roleSchema, "role");
+
+
+const roleModel = mongoose.model("role", roleSchema, "role");
+
 module.exports = {
   UserModel,
   processModel,

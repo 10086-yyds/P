@@ -14,6 +14,11 @@ export const BACKEND_CONFIG = {
 };
 
 export const API_CONFIG = {
+  // API基础地址
+  BASE_URL: 'http://localhost:3000',
+  // 项目API前缀
+  PROJECT_API: '/lz/api/projects',
+  
   // 高德地图API配置
   AMAP: {
     // 高德地图API密钥

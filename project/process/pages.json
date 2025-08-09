@@ -1,6 +1,5 @@
 {
-	"pages": [ 
-		{
+	"pages": [{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": ""
@@ -22,7 +21,8 @@
 		{
 			"path": "pages/approval/approval",
 			"style": {
-				"navigationBarTitleText": ""
+				"navigationBarTitleText": "我的审批",
+				"navigationStyle": "custom"
 			}
 		},
 		{
@@ -34,7 +34,59 @@
 		{
 			"path": "pages/todo/todo-detail",
 			"style": {
-				"navigationBarTitleText": "待办详情",
+				"navigationBarTitleText": "审批详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/project/project-detail",
+			"style": {
+				"navigationBarTitleText": "项目详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/document/document-detail",
+			"style": {
+				"navigationBarTitleText": "文档详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/project/project-list",
+			"style": {
+				"navigationBarTitleText": "项目列表"
+			}
+		},
+		{
+			"path": "pages/statistics/monthly-stats",
+			"style": {
+				"navigationBarTitleText": "月度统计"
+			}
+		},
+		{
+			"path": "pages/project/create-project",
+			"style": {
+				"navigationBarTitleText": "创建项目",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/project/project-search",
+			"style": {
+				"navigationBarTitleText": "项目搜索"
+			}
+		},
+		{
+			"path": "pages/project/project-check",
+			"style": {
+				"navigationBarTitleText": "进度管理"
+			}
+		},
+		{
+			"path": "pages/project/project-edit",
+			"style": {
+				"navigationBarTitleText": "编辑项目",
 				"navigationStyle": "custom"
 			}
 		}
@@ -58,7 +110,8 @@
 				"selectedIconPath": "",
 				"text": "审批",
 				"pagePath": "pages/approval/approval"
-			}, {
+			},
+			{
 				"iconPath": "",
 				"selectedIconPath": "",
 				"text": "我的",
