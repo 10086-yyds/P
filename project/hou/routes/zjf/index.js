@@ -134,12 +134,6 @@ router.post('/change-password', async(req, res, next) => {
   }
 });
 
-router.post('/edit', function(req, res, next) {
-  console.log('请求已抵达')
-  res.success({
-    statusCode:200,
-  }, '密码修改成功');
-});
 
 // 密码强度检测API
 router.post('/check-password-strength', async(req, res, next) => {
@@ -235,5 +229,98 @@ router.post('/get-password-info', async(req, res, next) => {
     res.error('获取密码信息失败', 500);
   }
 });
+
+router.get('/get-user-info', async(req, res, next) => {
+  try {
+    const { phone } = req.query;
+    
+    if (!phone) {
+      return res.error('手机号是必填的', 400);
+    }
+    
+    const user = await userModel.findOne({ phone: phone });
+    if (!user) {
+      return res.error('用户不存在', 404);
+    }
+    
+    // 返回用户信息，但不包含密码等敏感信息
+    const userInfo = {
+      _id: user._id,
+      name: user.username,
+      phone: user.phone,
+      email: user.email,
+      gender: user.gender,
+      department: user.department,
+      role: user.role,
+      passwordStrength: user.passwordStrength,
+      passwordSetAt: user.passwordSetAt,
+      passwordExpired: user.passwordExpired
+    };
+    
+    res.success({
+      userInfo,
+      statusCode:200
+    }, '获取用户信息成功');
+  } catch (error) {
+    console.error('获取用户信息错误:', error);
+    res.error('获取用户信息失败', 500);
+  }
+});
+
+router.post('/edit', async(req, res, next) => {
+  try {
+    const { phone, name } = req.body;
+    console.log('修改用户信息请求:', { phone, name });
+    
+    // 验证必填字段
+    if (!phone) {
+      return res.error('手机号是必填的', 400);
+    }
+    
+    if (!name || !name.trim()) {
+      return res.error('用户名称是必填的', 400);
+    }
+    
+    // 查找用户
+    const user = await userModel.findOne({ phone: phone });
+    if (!user) {
+      return res.error('用户不存在', 404);
+    }
+    
+    // 更新用户名称
+    const updatedUser = await userModel.findByIdAndUpdate(
+      user._id, 
+      { 
+        username: name.trim(),
+        updatedAt: new Date()
+      },
+      { new: true } // 返回更新后的文档
+    );
+    
+    console.log('用户信息修改成功:', { 
+      userId: user._id, 
+      phone: phone, 
+      newName: name.trim() 
+    });
+    
+    res.success({
+      statusCode: 200,
+      userInfo: {
+        _id: updatedUser._id,
+        name: updatedUser.username,
+        phone: updatedUser.phone,
+        email: updatedUser.email,
+        gender: updatedUser.gender,
+        department: updatedUser.department,
+        role: updatedUser.role
+      }
+    }, '用户信息修改成功');
+    
+  } catch (error) {
+    console.error('修改用户信息错误:', error);
+    res.error('修改用户信息失败，请重试', 500);
+  }
+});
+
 
 module.exports = router;
