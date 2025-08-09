@@ -1,7 +1,15 @@
 <template>
   <view class="home-container">
-    <!-- 顶部用户信息区域 -->
-    <view class="header-section">
+    <!-- 下拉刷新区域 -->
+    <scroll-view 
+      class="scroll-container" 
+      scroll-y="true" 
+      refresher-enabled="true"
+      :refresher-triggered="isRefreshing"
+      @refresherrefresh="onRefresh"
+    >
+      <!-- 顶部用户信息区域 -->
+      <view class="header-section">
       <view class="user-info">
         <view class="welcome-text">
           <text class="greeting">早上好，</text>
@@ -19,7 +27,7 @@
           </view>
         </view>
       </view>
-      <view class="notification-icon">
+      <view class="notification-icon" @click="handleNotificationClick">
         <text class="icon">🔔</text>
         <view class="badge" v-if="notificationCount > 0">{{
           notificationCount
@@ -34,22 +42,22 @@
         <text class="more-link">查看全部 ></text>
       </view>
       <view class="overview-stats">
-        <view class="stat-item">
+        <view class="stat-item" @click.stop="handleStatItemClick('total', '总项目')">
           <view class="stat-icon">📊</view>
           <view class="stat-number">{{ projectStats.total }}</view>
           <view class="stat-label">总项目</view>
         </view>
-        <view class="stat-item">
+        <view class="stat-item" @click.stop="handleStatItemClick('ongoing', '进行中项目')">
           <view class="stat-icon">🔄</view>
           <view class="stat-number">{{ projectStats.ongoing }}</view>
           <view class="stat-label">进行中</view>
         </view>
-        <view class="stat-item">
+        <view class="stat-item" @click.stop="handleStatItemClick('completed', '已完成项目')">
           <view class="stat-icon">✅</view>
           <view class="stat-number">{{ projectStats.completed }}</view>
           <view class="stat-label">已完成</view>
         </view>
-        <view class="stat-item">
+        <view class="stat-item" @click.stop="handleStatItemClick('overdue', '逾期项目')">
           <view class="stat-icon">⚠️</view>
           <view class="stat-number">{{ projectStats.overdue }}</view>
           <view class="stat-label">逾期</view>
@@ -106,15 +114,15 @@
         <text class="section-title">本月统计</text>
       </view>
       <view class="stats-grid">
-        <view class="stat-card">
+        <view class="stat-card" @click="handleMonthlyStatClick('projects', '新增项目')">
           <text class="stat-value">{{ monthlyStats.projects }}</text>
           <text class="stat-label">新增项目</text>
         </view>
-        <view class="stat-card">
+        <view class="stat-card" @click="handleMonthlyStatClick('tasks', '完成任务')">
           <text class="stat-value">{{ monthlyStats.tasks }}</text>
           <text class="stat-label">完成任务</text>
         </view>
-        <view class="stat-card">
+        <view class="stat-card" @click="handleMonthlyStatClick('approvals', '审批通过')">
           <text class="stat-value">{{ monthlyStats.approvals }}</text>
           <text class="stat-label">审批通过</text>
         </view>
@@ -141,6 +149,7 @@
         </view>
       </view>
     </view>
+    </scroll-view>
   </view>
 </template>
 
@@ -151,7 +160,7 @@ export default {
   data() {
     return {
       currentDate: "",
-      notificationCount: 3,
+      notificationCount: 0,
       weather: {
         condition: "晴天",
         temperature: 25,
@@ -160,55 +169,37 @@ export default {
       },
       isRefreshing: false,
       projectStats: {
-        total: 12,
-        ongoing: 8,
-        completed: 3,
-        overdue: 1,
+        total: 0,
+        ongoing: 0,
+        completed: 0,
+        overdue: 0,
       },
-      todoList: [
-        {
-          title: "项目A施工方案审批",
-          description: "需要审核施工图纸和材料清单",
-          time: "09:30",
-          priority: "high",
-        },
-        {
-          title: "现场安全检查",
-          description: "例行安全检查，重点关注高空作业",
-          time: "14:00",
-          priority: "medium",
-        },
-        {
-          title: "团队会议",
-          description: "讨论本周项目进度和下周计划",
-          time: "16:00",
-          priority: "normal",
-        },
-      ],
+      todoList: [],
       quickActions: [
-        { name: "新建项目", icon: "📋" },
-        { name: "项目搜索", icon: "🔍" },
-        { name: "团队管理", icon: "👥" },
-        { name: "文档中心", icon: "📁" },
-        { name: "会议安排", icon: "📅" },
-        { name: "质量检查", icon: "✅" },
-        // { name: "API测试", icon: "🔧" },
+        { name: "新建项目", icon: "📋", type: "create-project" },
+        { name: "项目搜索", icon: "🔍", type: "search-project" },
+        { name: "团队管理", icon: "👥", type: "team-management" },
+        { name: "文档中心", icon: "📁", type: "document-center" },
+        { name: "合同管理", icon: "📄", type: "contract-management" },
+        { name: "修改进度", icon: "📈", type: "project-check" },
       ],
       monthlyStats: {
-        projects: 5,
-        tasks:3,
-        approvals: 15,
+        projects: 0,
+        tasks: 0,
+        approvals: 0,
       },
-      recentItems: [
-        { name: "地铁3号线项目", icon: "🚇", time: "2小时前" },
-        { name: "施工图纸库", icon: "📐", time: "昨天" },
-        { name: "安全培训资料", icon: "🛡️", time: "3天前" },
-      ],
+      recentItems: [],
+      isLoading: false,
     };
   },
   mounted() {
     this.updateCurrentDate();
+    // 添加防抖，避免频繁调用天气API
+    this.debouncedGetWeather = this.debounce(this.getWeatherData, 30000); // 30秒防抖
     this.getWeatherData();
+    
+    // 加载页面数据
+    this.loadPageData();
   },
 
   onLoad() {
@@ -1182,7 +1173,8 @@ export default {
 
       this.isRefreshing = true;
       try {
-        await this.getWeatherData();
+        // 使用防抖的天气获取函数
+        await this.debouncedGetWeather();
         uni.showToast({
           title: "天气已更新",
           icon: "success",
@@ -1265,14 +1257,42 @@ export default {
     },
 
     handleQuickAction(action) {
-      if (action.name === "API测试") {
-        this.testAPIConfig();
-      } else {
-        uni.showToast({
-          title: `点击了${action.name}`,
-          icon: "none",
-        });
-      }
+      console.log('点击快捷功能:', action);
+      
+      // 显示加载提示
+      uni.showLoading({
+        title: '加载中...'
+      });
+      
+      setTimeout(() => {
+        uni.hideLoading();
+        
+        switch (action.type) {
+          case 'create-project':
+            this.navigateToCreateProject();
+            break;
+          case 'search-project':
+            this.navigateToProjectSearch();
+            break;
+          case 'team-management':
+            this.navigateToTeamManagement();
+            break;
+          case 'document-center':
+            this.navigateToDocumentCenter();
+            break;
+          case 'contract-management':
+            this.navigateToContractManagement();
+            break;
+          case 'project-check':
+            this.navigateToQualityCheck();
+            break;
+          default:
+            uni.showToast({
+              title: `点击了${action.name}`,
+              icon: "none",
+            });
+        }
+      }, 500);
     },
 
     handleTodoClick(item, index) {
@@ -1292,7 +1312,7 @@ export default {
         
         // 跳转到待办事项详情页面
         uni.navigateTo({
-          url: `/pages/todo/todo-detail?id=${index}&title=${encodeURIComponent(item.title)}&description=${encodeURIComponent(item.description)}&time=${encodeURIComponent(item.time)}&priority=${item.priority}`,
+          url: `/pages/project/project-detail?id=${index}&title=${encodeURIComponent(item.title)}&description=${encodeURIComponent(item.description)}&time=${encodeURIComponent(item.time)}&priority=${item.priority}`,
           success: () => {
             console.log('跳转成功');
           },
@@ -1328,18 +1348,19 @@ export default {
 
       // 创建新的访问记录
       const newRecentItem = {
-        name: todoItem.title,
-        icon: getIconByTitle(todoItem.title),
+        name: todoItem.title || '未知项目',
+        icon: getIconByTitle(todoItem.title || ''),
         time: '刚刚',
         type: 'todo',
-        id: Date.now() // 用于唯一标识
+        id: Date.now(), // 用于唯一标识
+        timestamp: new Date().getTime() // 添加时间戳
       };
 
       // 检查是否已经存在相同的项目
       const existingIndex = this.recentItems.findIndex(item => item.name === todoItem.title);
       
       if (existingIndex !== -1) {
-        // 如果已存在，更新时间和位置
+        // 如果已存在，移除旧记录
         this.recentItems.splice(existingIndex, 1);
       }
 
@@ -1351,8 +1372,17 @@ export default {
         this.recentItems = this.recentItems.slice(0, 5);
       }
 
-      // 更新其他项目的时间显示
-      this.updateRecentItemsTime();
+      // 只更新新添加项目的时间，其他项目保持原有时间
+      this.updateTimeForNewItem();
+    },
+
+    // 只为新添加的项目更新时间
+    updateTimeForNewItem() {
+      // 只更新第一个项目（刚刚添加的）的时间
+      if (this.recentItems.length > 0) {
+        this.recentItems[0].time = '刚刚';
+        this.recentItems[0].timestamp = new Date().getTime();
+      }
     },
 
     // 更新最近访问项目的时间显示
@@ -1363,11 +1393,17 @@ export default {
         } else if (index === 1) {
           item.time = '1分钟前';
         } else if (index === 2) {
-          item.time = '5分钟前';
+          item.time = '3分钟前';
         } else if (index === 3) {
-          item.time = '10分钟前';
+          item.time = '5分钟前';
         } else {
-          item.time = '30分钟前';
+          item.time = '10分钟前';
+        }
+        
+        // 为每个项目添加时间戳，用于更精确的时间计算
+        if (!item.timestamp) {
+          const now = new Date();
+          item.timestamp = now.getTime() - (index * 60000); // 每分钟递减
         }
       });
     },
@@ -1376,11 +1412,14 @@ export default {
     handleRecentItemClick(item, index) {
       console.log('点击最近访问:', item);
       
+      // 首先更新最近访问列表（无论什么类型都要更新）
+      this.updateRecentItemsFromClick(item, index);
+      
       if (item.type === 'todo') {
         // 如果是待办事项，需要在todoList中找到对应的项目
         const todoIndex = this.todoList.findIndex(todo => todo.title === item.name);
         if (todoIndex !== -1) {
-          // 找到对应的待办事项，调用点击处理
+          // 调用点击处理
           this.handleTodoClick(this.todoList[todoIndex], todoIndex);
         } else {
           // 如果找不到对应的待办事项，显示提示
@@ -1389,36 +1428,787 @@ export default {
             icon: 'none'
           });
         }
+      } else if (item.type === 'project') {
+        // 如果是项目，跳转到项目详情页面
+        this.handleProjectClick(item);
+      } else if (item.type === 'document') {
+        // 如果是文档，跳转到文档详情页面
+        this.handleDocumentClick(item);
       } else {
-        // 其他类型的项目（如项目、文档等）
+        // 其他类型的项目
         uni.showToast({
           title: `点击了最近访问: ${item.name}`,
           icon: "none",
         });
       }
-    }
+    },
+
+    // 处理项目点击
+    handleProjectClick(projectItem) {
+      console.log('点击项目:', projectItem);
+      
+      // 显示加载提示
+      uni.showLoading({
+        title: '加载中...'
+      });
+      
+      setTimeout(() => {
+        uni.hideLoading();
+        
+        // 跳转到项目详情页面
+        uni.navigateTo({
+          url: `/pages/project/project-detail?name=${encodeURIComponent(projectItem.name)}&icon=${encodeURIComponent(projectItem.icon)}`,
+          success: () => {
+            console.log('项目详情页面跳转成功');
+          },
+          fail: (err) => {
+            console.error('项目详情页面跳转失败:', err);
+            uni.showModal({
+              title: '提示',
+              content: '项目详情页面正在开发中，敬请期待！',
+              showCancel: false
+            });
+          }
+        });
+      }, 500);
+    },
+
+    // 处理文档点击
+    handleDocumentClick(documentItem) {
+      console.log('点击文档:', documentItem);
+      
+      // 显示加载提示
+      uni.showLoading({
+        title: '加载中...'
+      });
+      
+      setTimeout(() => {
+        uni.hideLoading();
+        
+        // 跳转到文档详情页面
+        uni.navigateTo({
+          url: `/pages/document/document-detail?name=${encodeURIComponent(documentItem.name)}&icon=${encodeURIComponent(documentItem.icon)}`,
+          success: () => {
+            console.log('文档详情页面跳转成功');
+          },
+          fail: (err) => {
+            console.error('文档详情页面跳转失败:', err);
+            uni.showModal({
+              title: '提示',
+              content: '文档详情页面正在开发中，敬请期待！',
+              showCancel: false
+            });
+          }
+        });
+      }, 500);
+    },
+
+    // 从最近访问列表点击时更新访问记录
+    updateRecentItemsFromClick(item, currentIndex) {
+      // 将当前项目移动到列表开头
+      this.recentItems.splice(currentIndex, 1);
+      
+      // 更新项目的时间戳为当前时间
+      item.timestamp = new Date().getTime();
+      item.time = '刚刚';
+      
+      this.recentItems.unshift(item);
+      
+      // 只更新被点击项目的时间，其他项目保持原有时间
+      // 不需要更新其他项目的时间，保持它们的原有状态
+    },
+
+    // 防抖函数
+    debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    },
+
+    // 项目概览点击处理
+    handleProjectOverviewClick() {
+      console.log('点击项目概览');
+      uni.navigateTo({
+        url: '/pages/project/project-list',
+        success: () => {
+          console.log('跳转到项目列表成功');
+        },
+        fail: (err) => {
+          console.error('跳转到项目列表失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: '项目列表页面正在开发中，敬请期待！',
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 统计项点击处理
+    handleStatItemClick(type, title) {
+      console.log('点击统计项:', type, title);
+      uni.navigateTo({
+        url: `/pages/project/project-list?type=${type}&title=${encodeURIComponent(title)}`,
+        success: () => {
+          console.log('跳转到项目列表成功');
+        },
+        fail: (err) => {
+          console.error('跳转到项目列表失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: `${title}页面正在开发中，敬请期待！`,
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 月度统计点击处理
+    handleMonthlyStatClick(type, title) {
+      console.log('点击月度统计:', type, title);
+      uni.navigateTo({
+        url: `/pages/statistics/monthly-stats?type=${type}&title=${encodeURIComponent(title)}`,
+        success: () => {
+          console.log('跳转到月度统计成功');
+        },
+        fail: (err) => {
+          console.error('跳转到月度统计失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: `${title}统计页面正在开发中，敬请期待！`,
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 新建项目导航
+    navigateToCreateProject() {
+      uni.navigateTo({
+        url: '/pages/project/create-project',
+        success: () => {
+          console.log('跳转到新建项目页面成功');
+        },
+        fail: (err) => {
+          console.error('跳转到新建项目页面失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: '新建项目页面正在开发中，敬请期待！',
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 项目搜索导航
+    navigateToProjectSearch() {
+      uni.navigateTo({
+        url: '/pages/project/project-search',
+        success: () => {
+          console.log('跳转到项目搜索页面成功');
+        },
+        fail: (err) => {
+          console.error('跳转到项目搜索页面失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: '项目搜索页面正在开发中，敬请期待！',
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 团队管理导航
+    navigateToTeamManagement() {
+      uni.navigateTo({
+        url: '/pages/team/team-management',
+        success: () => {
+          console.log('跳转到团队管理页面成功');
+        },
+        fail: (err) => {
+          console.error('跳转到团队管理页面失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: '团队管理页面正在开发中，敬请期待！',
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 文档中心导航
+    navigateToDocumentCenter() {
+      uni.navigateTo({
+        url: '/pages/document/document-center',
+        success: () => {
+          console.log('跳转到文档中心页面成功');
+        },
+        fail: (err) => {
+          console.error('跳转到文档中心页面失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: '文档中心页面正在开发中，敬请期待！',
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 合同管理导航
+    navigateToContractManagement() {
+      uni.navigateTo({
+        url: '/pages/contract/contract-management',
+        success: () => {
+          console.log('跳转到合同管理页面成功');
+        },
+        fail: (err) => {
+          console.error('跳转到合同管理页面失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: '合同管理页面正在开发中，敬请期待！',
+            showCancel: false
+          });
+        }
+      });
+    },
+
+    // 质量检查导航
+    navigateToQualityCheck() {
+      console.log('开始跳转到质量检查页面');
+      
+      // 先检查页面是否存在
+      const pages = getCurrentPages();
+      console.log('当前页面栈:', pages);
+      
+      uni.navigateTo({
+        url: '/pages/project/project-check',
+        success: () => {
+          console.log('跳转到质量检查页面成功');
+        },
+        fail: (err) => {
+          console.error('跳转到质量检查页面失败:', err);
+          console.error('错误详情:', err);
+          
+          // 尝试使用不同的路径格式
+          console.log('尝试使用相对路径...');
+          uni.navigateTo({
+            url: 'pages/project/project-check',
+            success: () => {
+              console.log('使用相对路径跳转成功');
+            },
+            fail: (err2) => {
+              console.error('相对路径也失败:', err2);
+              uni.showModal({
+                title: '提示',
+                content: '质量检查页面正在开发中，敬请期待！',
+                showCancel: false
+              });
+            }
+          });
+        }
+      });
+    },
+
+    // 加载页面数据
+    async loadPageData() {
+      this.isLoading = true;
+      
+      try {
+        // 并行加载所有数据
+        await Promise.all([
+          this.loadProjectStats(),
+          this.loadTodoList(),
+          this.loadMonthlyStats(),
+          this.loadRecentItems(),
+          this.loadNotificationCount()
+        ]);
+        
+        console.log('页面数据加载完成');
+      } catch (error) {
+        console.error('加载页面数据失败:', error);
+        uni.showToast({
+          title: '数据加载失败',
+          icon: 'error',
+          duration: 2000
+        });
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // 加载项目统计数据
+    async loadProjectStats() {
+      try {
+        // 先尝试获取所有项目，然后计算统计
+        const result = await uni.request({
+          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          }
+        });
+        
+        // 处理不同平台的返回值格式
+        let error, response;
+        if (Array.isArray(result)) {
+          [error, response] = result;
+        } else {
+          if (result.errMsg && result.errMsg !== 'request:ok') {
+            error = result;
+            response = null;
+          } else {
+            error = null;
+            response = result;
+          }
+        }
+        
+        if (error) {
+          throw new Error(`网络请求失败: ${error.errMsg || error}`);
+        }
+        
+        if (response.statusCode === 200 && response.data) {
+          // 检查API返回的数据结构
+          let projectsData;
+          if (response.data.success && response.data.data) {
+            projectsData = response.data.data;
+          } else {
+            projectsData = response.data;
+          }
+          
+          // 确保projectsData是数组
+          const projects = Array.isArray(projectsData) ? projectsData : [];
+          
+          // 计算统计数据
+          this.projectStats = {
+            total: projects.length,
+            ongoing: projects.filter(p => p.status === 'active' || p.status === 'ongoing').length,
+            completed: projects.filter(p => p.status === 'completed').length,
+            overdue: projects.filter(p => p.status === 'overdue').length
+          };
+        }
+      } catch (error) {
+        console.error('加载项目统计数据失败:', error);
+        // 使用默认数据
+        this.projectStats = {
+          total: 0,
+          ongoing: 0,
+          completed: 0,
+          overdue: 0
+        };
+      }
+    },
+
+    // 加载待办事项列表
+    async loadTodoList() {
+      try {
+        // 由于待办事项API可能不存在，我们使用模拟数据
+        // 或者从项目数据中生成待办事项
+        const result = await uni.request({
+          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          }
+        });
+        
+        // 处理不同平台的返回值格式
+        let error, response;
+        if (Array.isArray(result)) {
+          [error, response] = result;
+        } else {
+          if (result.errMsg && result.errMsg !== 'request:ok') {
+            error = result;
+            response = null;
+          } else {
+            error = null;
+            response = result;
+          }
+        }
+        
+        if (error) {
+          throw new Error(`网络请求失败: ${error.errMsg || error}`);
+        }
+        
+        if (response.statusCode === 200 && response.data) {
+          // 检查API返回的数据结构
+          let projectsData;
+          if (response.data.success && response.data.data) {
+            projectsData = response.data.data;
+          } else {
+            projectsData = response.data;
+          }
+          
+          // 确保projectsData是数组
+          const projects = Array.isArray(projectsData) ? projectsData : [];
+          
+          // 从项目中生成待办事项
+          this.todoList = projects.slice(0, 3).map((project, index) => ({
+            title: `${project.name}项目审批`,
+            description: `需要审核${project.name}项目的相关文档`,
+            time: this.formatTime(new Date(Date.now() + index * 3600000)), // 模拟时间
+            priority: index === 0 ? 'high' : index === 1 ? 'medium' : 'normal',
+            id: project._id || project.id
+          }));
+        }
+      } catch (error) {
+        console.error('加载待办事项失败:', error);
+        // 使用默认数据
+        this.todoList = [];
+      }
+    },
+
+    // 加载月度统计数据
+    async loadMonthlyStats() {
+      try {
+        // 由于月度统计API可能不存在，我们使用模拟数据
+        // 或者从项目数据中计算
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        
+        // 这里可以调用项目API来获取本月数据
+        const result = await uni.request({
+          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          }
+        });
+        
+        // 处理不同平台的返回值格式
+        let error, response;
+        if (Array.isArray(result)) {
+          [error, response] = result;
+        } else {
+          if (result.errMsg && result.errMsg !== 'request:ok') {
+            error = result;
+            response = null;
+          } else {
+            error = null;
+            response = result;
+          }
+        }
+        
+        if (error) {
+          throw new Error(`网络请求失败: ${error.errMsg || error}`);
+        }
+        
+        if (response.statusCode === 200 && response.data) {
+          // 检查API返回的数据结构
+          let projectsData;
+          if (response.data.success && response.data.data) {
+            projectsData = response.data.data;
+          } else {
+            projectsData = response.data;
+          }
+          
+          // 确保projectsData是数组
+          const projects = Array.isArray(projectsData) ? projectsData : [];
+          
+          // 计算本月统计数据
+          const thisMonthProjects = projects.filter(project => {
+            const createTime = new Date(project.createTime || project.createdAt);
+            return createTime.getMonth() + 1 === currentMonth && 
+                   createTime.getFullYear() === currentYear;
+          });
+          
+          this.monthlyStats = {
+            projects: thisMonthProjects.length,
+            tasks: Math.floor(thisMonthProjects.length * 0.8), // 模拟任务数量
+            approvals: Math.floor(thisMonthProjects.length * 1.2) // 模拟审批数量
+          };
+        }
+      } catch (error) {
+        console.error('加载月度统计数据失败:', error);
+        // 使用默认数据
+        this.monthlyStats = {
+          projects: 0,
+          tasks: 0,
+          approvals: 0
+        };
+      }
+    },
+
+    // 加载最近访问项目
+    async loadRecentItems() {
+      try {
+        // 由于最近访问API可能不存在，我们从项目数据中生成
+        const result = await uni.request({
+          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          }
+        });
+        
+        // 处理不同平台的返回值格式
+        let error, response;
+        if (Array.isArray(result)) {
+          [error, response] = result;
+        } else {
+          if (result.errMsg && result.errMsg !== 'request:ok') {
+            error = result;
+            response = null;
+          } else {
+            error = null;
+            response = result;
+          }
+        }
+        
+        if (error) {
+          throw new Error(`网络请求失败: ${error.errMsg || error}`);
+        }
+        
+        if (response.statusCode === 200 && response.data) {
+          // 检查API返回的数据结构
+          let projectsData;
+          if (response.data.success && response.data.data) {
+            projectsData = response.data.data;
+          } else {
+            projectsData = response.data;
+          }
+          
+          // 确保projectsData是数组
+          const projects = Array.isArray(projectsData) ? projectsData : [];
+          
+          // 从项目中生成最近访问列表
+          this.recentItems = projects.slice(0, 3).map((project, index) => ({
+            name: project.name,
+            icon: this.getIconByType('project'),
+            time: this.formatTimeAgo(project.createTime || project.createdAt),
+            type: 'project',
+            id: project._id || project.id,
+            timestamp: new Date(project.createTime || project.createdAt).getTime()
+          }));
+        }
+      } catch (error) {
+        console.error('加载最近访问项目失败:', error);
+        // 使用默认数据
+        this.recentItems = [];
+      }
+    },
+
+    // 加载通知数量
+    async loadNotificationCount() {
+      try {
+        // 由于通知API可能不存在，我们使用模拟数据
+        // 或者从其他数据中计算
+        this.notificationCount = Math.floor(Math.random() * 5); // 模拟0-4个通知
+        
+        // 如果后端有通知API，可以取消注释下面的代码
+        /*
+        const result = await uni.request({
+          url: `${API_CONFIG.BASE_URL}/lz/api/notifications/count`,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          }
+        });
+        
+        // 处理不同平台的返回值格式
+        let error, response;
+        if (Array.isArray(result)) {
+          [error, response] = result;
+        } else {
+          if (result.errMsg && result.errMsg !== 'request:ok') {
+            error = result;
+            response = null;
+          } else {
+            error = null;
+            response = result;
+          }
+        }
+        
+        if (error) {
+          throw new Error(`网络请求失败: ${error.errMsg || error}`);
+        }
+        
+        if (response.statusCode === 200 && response.data) {
+          // 检查API返回的数据结构
+          let countData;
+          if (response.data.success && response.data.data) {
+            countData = response.data.data;
+          } else {
+            countData = response.data;
+          }
+          
+          this.notificationCount = countData.count || 0;
+        }
+        */
+      } catch (error) {
+        console.error('加载通知数量失败:', error);
+        this.notificationCount = 0;
+      }
+    },
+
+    // 根据类型获取图标
+    getIconByType(type) {
+      const iconMap = {
+        'project': '📊',
+        'document': '📁',
+        'todo': '📝',
+        'contract': '📄',
+        'approval': '📋',
+        'check': '✅',
+        'default': '📄'
+      };
+      return iconMap[type] || iconMap.default;
+    },
+
+    // 格式化时间
+    formatTime(timeString) {
+      if (!timeString) return '';
+      
+      try {
+        const date = new Date(timeString);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+      } catch (error) {
+        return '';
+      }
+    },
+
+    // 格式化时间差
+    formatTimeAgo(timeString) {
+      if (!timeString) return '';
+      
+      try {
+        const date = new Date(timeString);
+        const now = new Date();
+        const diffTime = now - date;
+        const diffMinutes = Math.floor(diffTime / (1000 * 60));
+        const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffMinutes < 1) {
+          return '刚刚';
+        } else if (diffMinutes < 60) {
+          return `${diffMinutes}分钟前`;
+        } else if (diffHours < 24) {
+          return `${diffHours}小时前`;
+        } else if (diffDays < 7) {
+          return `${diffDays}天前`;
+        } else {
+          return `${date.getMonth() + 1}月${date.getDate()}日`;
+        }
+      } catch (error) {
+        return '';
+      }
+    },
+
+    // 获取用户token
+    getToken() {
+      return uni.getStorageSync('userToken') || '';
+    },
+
+    // 下拉刷新处理
+    async onRefresh() {
+      this.isRefreshing = true;
+      
+      try {
+        // 重新加载所有数据
+        await this.loadPageData();
+        
+        uni.showToast({
+          title: '刷新成功',
+          icon: 'success',
+          duration: 1500
+        });
+      } catch (error) {
+        console.error('刷新数据失败:', error);
+        uni.showToast({
+          title: '刷新失败',
+          icon: 'error',
+          duration: 2000
+        });
+      } finally {
+        this.isRefreshing = false;
+      }
+    },
+
+    // 通知点击处理
+    handleNotificationClick() {
+      console.log('点击通知图标');
+      uni.navigateTo({
+        url: '/pages/notification/notification-list',
+        success: () => {
+          console.log('跳转到通知列表成功');
+        },
+        fail: (err) => {
+          console.error('跳转到通知列表失败:', err);
+          uni.showModal({
+            title: '提示',
+            content: '通知列表页面正在开发中，敬请期待！',
+            showCancel: false
+          });
+        }
+      });
+    },
   },
 };
 </script>
 
 <style scoped>
 .home-container {
-  padding: 20rpx;
   background-color: #f5f5f5;
   min-height: 100vh;
 }
 
-/* 顶部用户信息 */
-.header-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 30rpx 20rpx;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 20rpx;
-  margin-bottom: 30rpx;
-  color: white;
+.scroll-container {
+  height: 100vh;
 }
+
+/* 加载状态 */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-spinner {
+  width: 60rpx;
+  height: 60rpx;
+  border: 4rpx solid #f3f3f3;
+  border-top: 4rpx solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+  /* 顶部用户信息 */
+  .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 30rpx 20rpx;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20rpx;
+    margin: 20rpx;
+    margin-bottom: 30rpx;
+    color: white;
+  }
 
 .user-info {
   flex: 1;
@@ -1481,6 +2271,15 @@ export default {
 .notification-icon {
   position: relative;
   font-size: 40rpx;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 10rpx;
+  border-radius: 50%;
+}
+
+.notification-icon:active {
+  background-color: rgba(255, 255, 255, 0.2);
+  transform: scale(0.9);
 }
 
 .badge {
@@ -1496,13 +2295,20 @@ export default {
   text-align: center;
 }
 
-/* 项目概览卡片 */
-.overview-card {
-  background: white;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  margin-bottom: 30rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+  /* 项目概览卡片 */
+  .overview-card {
+    background: white;
+    border-radius: 20rpx;
+    padding: 30rpx;
+    margin: 0 20rpx 30rpx;
+    box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+
+.overview-card:active {
+  transform: scale(0.98);
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.15);
 }
 
 .card-header {
@@ -1534,6 +2340,15 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  padding: 10rpx;
+  border-radius: 10rpx;
+}
+
+.stat-item:active {
+  background-color: #f0f2ff;
+  transform: scale(0.95);
 }
 
 .stat-number {
@@ -1567,14 +2382,14 @@ export default {
   line-height: 1.2;
 }
 
-/* 待办事项 */
-.todo-section {
-  background: white;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  margin-bottom: 30rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
-}
+  /* 待办事项 */
+  .todo-section {
+    background: white;
+    border-radius: 20rpx;
+    padding: 30rpx;
+    margin: 0 20rpx 30rpx;
+    box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+  }
 
 .section-header {
   display: flex;
@@ -1671,14 +2486,19 @@ export default {
   color: #999;
 }
 
-/* 快捷功能 */
-.quick-actions {
-  background: white;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  margin-bottom: 30rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+.time-text {
+  font-size: 24rpx;
+  color: #999;
 }
+
+  /* 快捷功能 */
+  .quick-actions {
+    background: white;
+    border-radius: 20rpx;
+    padding: 30rpx;
+    margin: 0 20rpx 30rpx;
+    box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+  }
 
 .action-grid {
   display: grid;
@@ -1709,14 +2529,14 @@ export default {
   color: #333;
 }
 
-/* 数据统计 */
-.stats-section {
-  background: white;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  margin-bottom: 30rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
-}
+  /* 数据统计 */
+  .stats-section {
+    background: white;
+    border-radius: 20rpx;
+    padding: 30rpx;
+    margin: 0 20rpx 30rpx;
+    box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+  }
 
 .stats-grid {
   display: grid;
@@ -1730,6 +2550,13 @@ export default {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 15rpx;
   color: white;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.stat-card:active {
+  transform: scale(0.95);
+  box-shadow: 0 2rpx 10rpx rgba(102, 126, 234, 0.3);
 }
 
 .stat-value {
@@ -1747,14 +2574,14 @@ export default {
   font-weight: 500;
 }
 
-/* 最近访问 */
-.recent-section {
-  background: white;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  margin-bottom: 30rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
-}
+  /* 最近访问 */
+  .recent-section {
+    background: white;
+    border-radius: 20rpx;
+    padding: 30rpx;
+    margin: 0 20rpx 30rpx;
+    box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+  }
 
 .recent-item {
   display: flex;

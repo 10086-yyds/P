@@ -15,9 +15,8 @@ function getBaseUrl() {
 
 // 配置常量
 const CONFIG = {
-  // API基础地址 - 修复uni-app环境下的配置
-  BASE_URL: getBaseUrl(),
-
+  // API基础地址 - 强制使用后端服务器地址
+  BASE_URL: 'http://localhost:3000',
   // 请求超时时间 (毫秒)
   TIMEOUT: 10000,
 
@@ -138,6 +137,11 @@ class Request {
       timeout: options.timeout || CONFIG.TIMEOUT,
       ...options
     }
+
+    // {{ AURA-X: Add - 添加调试日志确认请求URL. }}
+    console.log('🔍 [Request Debug] 完整请求URL:', config.url)
+    console.log('🔍 [Request Debug] BASE_URL:', CONFIG.BASE_URL)
+    console.log('🔍 [Request Debug] 请求路径:', options.url)
 
     try {
       // 处理请求拦截器
