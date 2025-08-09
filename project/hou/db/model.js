@@ -14,6 +14,10 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  age:{
+    type:String,
+    default:''
+  },
 
   // （可选）是否已过期
   passwordExpired: {
@@ -34,6 +38,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: false,
     unique: false,
+  },
+  department:{
+    type:String,
+    default:''
   },
   //邮箱
   phone: {

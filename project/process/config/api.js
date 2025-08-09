@@ -34,6 +34,27 @@ export const API_CONFIG = {
     
     // 地理编码API接口
     GEOCODE_URL: 'https://restapi.amap.com/v3/geocode/regeo'
+  },
+  
+  // 用户相关API接口
+  USER: {
+    // 获取用户信息
+    GET_USER_INFO: '/zjf/get-user-info',
+    
+    // 修改密码
+    CHANGE_PASSWORD: '/zjf/change-password',
+    
+    // 检查密码强度
+    CHECK_PASSWORD_STRENGTH: '/zjf/check-password-strength',
+    
+    // 检查密码是否过期
+    CHECK_PASSWORD_EXPIRY: '/zjf/check-password-expiry',
+    
+    // 获取密码信息
+    GET_PASSWORD_INFO: '/zjf/get-password-info',
+    
+    // 编辑用户信息
+    EDIT_USER_INFO: '/zjf/edit'
   }
 };
 

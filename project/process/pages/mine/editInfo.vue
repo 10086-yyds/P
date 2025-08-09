@@ -37,14 +37,19 @@ export default {
 	data() {
 		return {
 			navHeight: 88,
-			userName: ''
+			userName: '',
+			userPhone: ''
 		}
 	},
 	onLoad(option) {
-		// 接收页面传递的用户名参数
+		// 接收页面传递的用户名和手机号参数
 		if (option.name) {
-            console.log(option.name,'1111')
+            console.log(option.name,'用户名参数')
 			this.userName = decodeURIComponent(option.name)
+		}
+		if (option.phone) {
+            console.log(option.phone,'手机号参数')
+			this.userPhone = decodeURIComponent(option.phone)
 		}
 	},
 	mounted() {
@@ -69,40 +74,82 @@ export default {
 				return
 			}
 			
-            const response = await new Promise((resolve,reject) => {
-                uni.request({
-                    url:'http://localhost:3000/zjf/edit',
-                    method:"POST",
-                    header:{
-                        'Content-Type':'application/json'
-                    },
-                    success:(res) => {
-                        if (res.statusCode === 200) {
-								resolve(res.data) 
+			// 验证手机号
+			if (!this.userPhone) {
+				uni.showToast({
+					title: '缺少手机号参数',
+					icon: 'none'
+				})
+				return
+			}
+			
+			try {
+				const response = await new Promise((resolve, reject) => {
+					uni.request({
+						url: 'http://localhost:3000/zjf/edit',
+						method: "POST",
+						header: {
+							'Content-Type': 'application/json'
+						},
+						data: {
+							phone: this.userPhone,
+							name: this.userName.trim()
+						},
+						success: (res) => {
+							console.log('修改用户名响应:', res)
+							if (res.statusCode === 200) {
+								resolve(res.data)
 							} else {
 								reject(new Error(`请求失败: ${res.statusCode}`))
 							}
-                    },
-                    fail:(error) => {
-                        console.error("请求失败")
-                        reject(error)
-                    }
-                })
-            })
+						},
+						fail: (error) => {
+							console.error("请求失败:", error)
+							reject(error)
+						}
+					})
+				})
 
-
-			// 提交用户名
-			console.log('提交用户名:', this.userName)
-			
-			uni.showToast({
-				title: '提交成功',
-				icon: 'success'
-			})
-			
-			// 提交成功后返回上一页
-			setTimeout(() => {
-				uni.navigateBack()
-			}, 1500)
+				// 检查后端响应
+				if (response.success || response.code === 200) {
+					console.log('用户名修改成功:', this.userName)
+					
+					uni.showToast({
+						title: '修改成功',
+						icon: 'success'
+					})
+					
+					// 修改成功后返回到我的页面，并传递更新后的用户信息
+					setTimeout(() => {
+						// 通过页面事件通知上一页更新数据
+						const pages = getCurrentPages()
+						const prevPage = pages[pages.length - 2] // 获取上一页实例
+						
+						if (prevPage && prevPage.route === 'pages/mine/mine') {
+							// 通知上一页更新用户信息
+							if (prevPage.$vm && prevPage.$vm.updateUserName) {
+								prevPage.$vm.updateUserName(this.userName.trim())
+							} else {
+								// 如果上一页没有更新方法，直接更新数据
+								if (prevPage.$vm) {
+									prevPage.$vm.userInfo.name = this.userName.trim()
+								}
+							}
+						}
+						
+						uni.navigateBack()
+					}, 1500)
+				} else {
+					throw new Error(response.message || '修改失败')
+				}
+				
+			} catch (error) {
+				console.error('修改用户名失败:', error)
+				uni.showToast({
+					title: error.message || '修改失败，请重试',
+					icon: 'none'
+				})
+			}
 		}
 	}
 }

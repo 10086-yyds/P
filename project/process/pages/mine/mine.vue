@@ -91,10 +91,10 @@
 				<view class="info-item">
 					<view class="info-left">
 						<text class="info-icon">📅</text>
-						<text class="info-label">创建日期</text>
+						<text class="info-label">密码设置时间</text>
 					</view>
 					<view class="info-right">
-						<text class="info-value">{{ userInfo.createTime || '2020.02.12' }}</text>
+						<text class="info-value">{{ formatTime(userInfo.passwordSetAt) || '2020.02.12' }}</text>
 						<text class="arrow">〉</text>
 					</view>
 				</view>
@@ -244,7 +244,8 @@ export default {
 				gender: '男',
 				department: '财务部',
 				role: '财务主管',
-				createTime: '2020.02.12'
+				createTime: '2020.02.12',
+				passwordSetAt:''
 			}
 		}
 	},
@@ -256,6 +257,19 @@ export default {
 			}
 		})
 		
+		uni.request({
+			url: 'http://localhost:3000/zjf/get-user-info?phone=' + this.userInfo.phone,
+			method: 'GET',
+			success: (res) => {
+				console.log(res,'111')
+				if(res.statusCode === 200){
+					this.userInfo = res.data.data.userInfo
+				}
+			},
+			fail:(error) => {
+				console.log(error)
+			}
+		})
 		// 检查是否是页面刷新（只有刷新时才恢复状态）
 		this.checkAndRestoreOnRefresh()
 		
@@ -267,6 +281,13 @@ export default {
 	
 	// 页面显示时触发
 	onShow() {
+		// 刷新用户信息（当从其他页面返回时）
+		if (this._isFromEdit) {
+			// 如果是从编辑页面返回，重新获取用户信息
+			this.fetchUserInfo()
+			this._isFromEdit = false
+		}
+		
 		// 每次页面显示时都弹出AI助手
 		this.showAiHelper()
 	},
@@ -277,6 +298,59 @@ export default {
 	},
 	
 	methods: {
+		// 格式化时间
+		formatTime(timeString) {
+			if (!timeString) return ''
+			
+			try {
+				const date = new Date(timeString)
+				if (isNaN(date.getTime())) return ''
+				
+				const year = date.getFullYear()
+				const month = String(date.getMonth() + 1).padStart(2, '0')
+				const day = String(date.getDate()).padStart(2, '0')
+				
+				return `${year}.${month}.${day}`
+			} catch (error) {
+				console.error('时间格式化错误:', error)
+				return ''
+			}
+		},
+		
+		// 获取用户信息
+		fetchUserInfo() {
+			uni.request({
+				url: 'http://localhost:3000/zjf/get-user-info?phone=' + this.userInfo.phone,
+				method: 'GET',
+				success: (res) => {
+					console.log('重新获取用户信息:', res)
+					if(res.statusCode === 200 && res.data.data && res.data.data.userInfo){
+						// 更新用户信息，保持原有默认值
+						this.userInfo = {
+							...this.userInfo,
+							...res.data.data.userInfo
+						}
+					}
+				},
+				fail:(error) => {
+					console.log('获取用户信息失败:', error)
+				}
+			})
+		},
+		
+		// 更新用户名（从editInfo页面返回时调用）
+		updateUserName(newName) {
+			this.userInfo.name = newName
+			console.log('用户名已更新为:', newName)
+			
+			// 可选：显示更新成功的提示
+			uni.showToast({
+				title: '用户名已更新',
+				icon: 'success',
+				duration: 1000
+			})
+		},
+		
 		onSettingClick() {
 			console.log('点击了设置按钮')
 			// 这里可以跳转到设置页面
@@ -287,9 +361,11 @@ export default {
 		// 编辑用户名
 		editUserName() {
 			console.log('编辑用户名')
+			// 标记即将跳转到编辑页面
+			this._isFromEdit = true
 			// 跳转到编辑信息页面，传递用户名参数
 			uni.navigateTo({
-				url: `/pages/mine/editInfo?name=${this.userInfo.name}`
+				url: `/pages/mine/editInfo?phone=${this.userInfo.phone}&name=${this.userInfo.name}`
 			})
 		},
 		// 编辑手机号
