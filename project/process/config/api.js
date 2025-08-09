@@ -18,6 +18,8 @@ export const API_CONFIG = {
   BASE_URL: 'http://localhost:3000',
   // 项目API前缀
   PROJECT_API: '/lz/api/projects',
+  // 合同API前缀
+  CONTRACT_API: '/lz/api/contracts',
   
   // 高德地图API配置
   AMAP: {

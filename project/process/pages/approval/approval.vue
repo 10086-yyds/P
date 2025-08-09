@@ -39,8 +39,39 @@
 					@input="onSearch"
 				/>
 			</view>
-			<view class="filter-btn">
-				<text class="filter-icon">⚙️</text>
+			<view class="filter-btn" @click="testApiConnection">
+				<text class="filter-icon">🔧</text>
+			</view>
+		</view>
+		
+		<!-- 调试信息面板 -->
+		<view class="debug-panel" v-if="showDebugPanel">
+			<view class="debug-header">
+				<text class="debug-title">API调试信息</text>
+				<view class="close-debug-btn" @click="showDebugPanel = false">✕</view>
+			</view>
+			<view class="debug-content">
+				<view class="debug-item">
+					<text class="debug-label">API状态:</text>
+					<text class="debug-value">{{ debugInfo.apiStatus }}</text>
+				</view>
+				<view class="debug-item">
+					<text class="debug-label">最后请求:</text>
+					<text class="debug-value">{{ debugInfo.lastRequest }}</text>
+				</view>
+				<view class="debug-item">
+					<text class="debug-label">响应状态:</text>
+					<text class="debug-value">{{ debugInfo.responseStatus }}</text>
+				</view>
+				<view class="debug-item">
+					<text class="debug-label">数据条数:</text>
+					<text class="debug-value">{{ debugInfo.dataCount }}</text>
+				</view>
+				<view class="debug-actions">
+					<button class="debug-btn" @click="testDatabase">测试数据库</button>
+					<button class="debug-btn" @click="createTestData">创建测试数据</button>
+					<button class="debug-btn" @click="refreshData">刷新数据</button>
+				</view>
 			</view>
 		</view>
 
@@ -67,9 +98,25 @@
 						<text class="detail-label">合同类型：</text>
 						<text class="detail-value">{{ item.contractType }}</text>
 					</view>
+					<view class="item-detail">
+						<text class="detail-label">甲方：</text>
+						<text class="detail-value">{{ item.partyA || '未知' }}</text>
+					</view>
+					<view class="item-detail">
+						<text class="detail-label">乙方：</text>
+						<text class="detail-value">{{ item.partyB || '未知' }}</text>
+					</view>
 					<view class="item-detail" v-if="item.amount">
 						<text class="detail-label">合同金额：</text>
 						<text class="detail-value amount">¥{{ formatAmount(item.amount) }}</text>
+					</view>
+					<view class="item-detail" v-if="item.startDate">
+						<text class="detail-label">开始日期：</text>
+						<text class="detail-value">{{ item.startDate }}</text>
+					</view>
+					<view class="item-detail" v-if="item.endDate">
+						<text class="detail-label">结束日期：</text>
+						<text class="detail-value">{{ item.endDate }}</text>
 					</view>
 				</view>
 
@@ -80,18 +127,23 @@
 						<text class="applicant-action">{{ item.action }}</text>
 					</view>
 					
+					<!-- 待审批标签页：显示审批按钮 -->
 					<view class="action-buttons" v-if="currentTab === 0">
 						<button class="btn-secondary" @click.stop="reject(item)">驳回</button>
 						<button class="btn-primary" @click.stop="approve(item)">通过</button>
 					</view>
 					
-					<view class="status-tag" v-else>
-						<text 
-							class="status-text" 
-							:class="getStatusClass(item.status)"
-						>
-							{{ item.statusText }}
-						</text>
+					<!-- 其他标签页：显示状态并支持修改 -->
+					<view class="status-section" v-else>
+						<view class="status-tag" @click.stop="showStatusModal(item)">
+							<text 
+								class="status-text" 
+								:class="getStatusClass(item.status)"
+							>
+								{{ item.statusText }}
+							</text>
+							<text class="edit-icon">📝</text>
+						</view>
 					</view>
 				</view>
 			</view>
@@ -106,10 +158,60 @@
 				<text class="empty-text">暂无审批数据</text>
 			</view>
 		</scroll-view>
+		
+		<!-- 状态修改模态框 -->
+		<view class="status-modal" v-if="showStatusEdit" @click="closeStatusModal">
+			<view class="modal-content" @click.stop>
+				<view class="modal-header">
+					<text class="modal-title">修改合同状态</text>
+					<view class="close-btn" @click="closeStatusModal">✕</view>
+				</view>
+				
+				<view class="modal-body">
+					<view class="contract-info">
+						<text class="contract-name">{{ currentEditItem?.contractName }}</text>
+						<text class="contract-company">{{ currentEditItem?.company }}</text>
+					</view>
+					
+					<view class="status-options">
+						<text class="section-title">选择新状态:</text>
+						<view class="status-list">
+							<view 
+								v-for="status in availableStatuses" 
+								:key="status.value"
+								class="status-option"
+								:class="{ active: selectedStatus === status.value }"
+								@click="selectStatus(status.value)"
+							>
+								<view class="status-indicator" :class="getStatusClass(status.value)"></view>
+								<text class="status-name">{{ status.label }}</text>
+							</view>
+						</view>
+					</view>
+					
+					<view class="comments-section">
+						<text class="section-title">备注 (可选):</text>
+						<textarea 
+							class="comments-input" 
+							placeholder="请输入修改原因或备注信息..."
+							v-model="statusComments"
+							maxlength="200"
+						></textarea>
+					</view>
+				</view>
+				
+				<view class="modal-footer">
+					<button class="btn-cancel" @click="closeStatusModal">取消</button>
+					<button class="btn-confirm" @click="confirmStatusChange" :disabled="!selectedStatus">确认修改</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script>
+	import { API_CONFIG } from '@/config/api.js';
+	
 	export default {
 		data() {
 			return {
@@ -140,6 +242,27 @@
 					pending: 0,
 					approved: 0,
 					rejected: 0
+				},
+				// 状态修改相关
+				showStatusEdit: false,
+				currentEditItem: null,
+				selectedStatus: '',
+				statusComments: '',
+				availableStatuses: [
+					{ value: '草稿', label: '草稿' },
+					{ value: '待审批', label: '待审批' },
+					{ value: '审批中', label: '审批中' },
+					{ value: '已批准', label: '已批准' },
+					{ value: '已拒绝', label: '已拒绝' },
+					{ value: '已取消', label: '已取消' }
+				],
+				// 调试相关
+				showDebugPanel: false,
+				debugInfo: {
+					apiStatus: '未测试',
+					lastRequest: '无',
+					responseStatus: '无',
+					dataCount: 0
 				}
 			}
 		},
@@ -160,6 +283,11 @@
 			}
 		},
 		methods: {
+			// 获取token
+			getToken() {
+				return uni.getStorageSync('token') || '';
+			},
+			
 			// 返回上一页
 			goBack() {
 				uni.navigateBack();
@@ -188,96 +316,134 @@
 					this.loading = true;
 					
 					const tabKey = this.tabs[this.currentTab].key;
+					console.log('🔍 开始加载审批数据，当前标签:', tabKey);
 					
-					// 暂时使用模拟数据，等API连接问题解决后再切换
-					console.log('使用模拟数据，当前标签:', tabKey);
+					// 构建查询参数
+					const queryParams = new URLSearchParams();
+					if (this.searchKeyword) {
+						queryParams.append('keyword', this.searchKeyword);
+					}
+					queryParams.append('page', this.page.toString());
+					queryParams.append('limit', this.limit.toString());
 					
-					// 模拟API延迟
-					await new Promise(resolve => setTimeout(resolve, 500));
-					
-					// 模拟数据
-					const mockData = {
-						pending: [
-							{
-								id: '1',
-								title: '合同申请',
-								time: this.formatDate(new Date()),
-								company: '某兰公园一区改造工程',
-								contractName: '大大建设对外合同',
-								contractType: '工程合同',
-								applicant: '李想',
-								action: '提交',
-								status: '待审批',
-								statusText: '待审批',
-								amount: 100000,
-								originalData: {}
-							},
-							{
-								id: '2',
-								title: '合同申请',
-								time: this.formatDate(new Date(Date.now() - 24 * 60 * 60 * 1000)),
-								company: '办公楼装修项目',
-								contractName: '装修工程合同',
-								contractType: '工程合同',
-								applicant: '张三',
-								action: '提交',
-								status: '待审批',
-								statusText: '待审批',
-								amount: 500000,
-								originalData: {}
-							}
-						],
-						processed: [
-							{
-								id: '3',
-								title: '合同申请',
-								time: this.formatDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
-								company: '数据分析系统项目',
-								contractName: '软件开发合同',
-								contractType: '服务合同',
-								applicant: '王五',
-								action: '提交',
-								status: '已批准',
-								statusText: '已通过',
-								amount: 200000,
-								originalData: {}
-							}
-						],
-						copied: [
-							{
-								id: '4',
-								title: '合同申请',
-								time: this.formatDate(new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)),
-								company: '客户管理系统',
-								contractName: 'CRM系统开发合同',
-								contractType: '服务合同',
-								applicant: '赵六',
-								action: '提交',
-								status: '已批准',
-								statusText: '已通过',
-								amount: 300000,
-								originalData: {}
-							}
-						],
-						initiated: [
-							{
-								id: '5',
-								title: '合同申请',
-								time: this.formatDate(new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)),
-								company: '员工培训系统',
-								contractName: '培训系统开发合同',
-								contractType: '服务合同',
-								applicant: '孙七',
-								action: '提交',
-								status: '草稿',
-								statusText: '草稿',
-								amount: 150000,
-								originalData: {}
-							}
-						]
+					// 根据标签页映射API状态
+					const statusMap = {
+						'pending': '待审批',
+						'processed': null, // 已处理需要特殊处理，不传状态参数，在前端过滤
+						'copied': null, // 抄送功能暂未实现，返回null不传递状态参数
+						'initiated': null // 我发起的需要根据创建者查询，暂不使用状态过滤
 					};
 					
-					// 根据搜索关键词过滤
+					const mappedStatus = statusMap[tabKey];
+					if (mappedStatus) {
+						queryParams.append('status', mappedStatus);
+					} else if (tabKey === 'initiated') {
+						// 我发起的：根据当前用户ID查询
+						const userId = uni.getStorageSync('userId');
+						if (userId) {
+							queryParams.append('applicantId', userId);
+						}
+					}
+					// 对于已处理和抄送，不传递状态参数，获取所有数据后在前端过滤
+					
+					const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+					console.log('📡 API请求URL:', apiUrl);
+					
+					// 调用真实的API
+					const result = await uni.request({
+						url: apiUrl,
+						method: 'GET',
+						header: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${this.getToken()}`
+						},
+						timeout: 10000
+					});
+					
+					console.log('📊 审批API响应:', {
+						statusCode: result.statusCode,
+						dataKeys: result.data ? Object.keys(result.data) : [],
+						success: result.data?.success,
+						message: result.data?.message,
+						dataLength: result.data?.data ? (Array.isArray(result.data.data) ? result.data.data.length : 'not array') : 'no data'
+					});
+					
+					if (result.statusCode === 200 && result.data) {
+						let approvalData = [];
+						
+						// 检查API返回的数据结构
+						if (result.data.success && result.data.data) {
+							if (result.data.data.applications) {
+								approvalData = result.data.data.applications;
+							} else if (Array.isArray(result.data.data)) {
+								approvalData = result.data.data;
+							}
+						} else if (Array.isArray(result.data)) {
+							approvalData = result.data;
+						}
+						
+						console.log('📊 解析后的审批数据:', approvalData);
+						
+						// 转换后端数据格式到前端格式
+						const transformedData = approvalData.map(item => {
+							return {
+								id: item._id || item.id,
+								title: '合同申请',
+								time: this.formatDate(item.createdAt || item.time),
+								company: item.project?.name || item.company || '未知项目',
+								contractName: item.contract?.name || item.contractName || '未知合同',
+								contractType: item.contract?.type || item.contractType || '工程合同',
+								partyA: item.contract?.partyA?.name || item.partyA || '未知甲方',
+								partyB: item.contract?.partyB?.name || item.partyB || '未知乙方',
+								startDate: item.contract?.startDate ? new Date(item.contract.startDate).toISOString().split('T')[0] : (item.startDate || ''),
+								endDate: item.contract?.endDate ? new Date(item.contract.endDate).toISOString().split('T')[0] : (item.endDate || ''),
+								applicant: item.applicant?.name || item.applicant || '未知',
+								action: '提交',
+								status: item.status || '待审批',
+								statusText: this.getStatusText(item.status || '待审批'),
+								amount: item.financial?.amountIncludingTax || item.amount || 0,
+								originalData: item
+							};
+						});
+						
+						// 对于特殊标签页，进行数据过滤
+						let finalData = transformedData;
+						if (tabKey === 'processed') {
+							// 已处理：只显示已批准和已拒绝的记录
+							finalData = transformedData.filter(item => 
+								['已批准', '已拒绝'].includes(item.status)
+							);
+						} else if (tabKey === 'copied') {
+							// 抄送：暂时显示空数据，因为后端未实现抄送功能
+							finalData = [];
+						}
+						
+						// 如果是第一页，直接替换数据；否则追加数据
+						if (this.page === 1) {
+							this.approvalData[tabKey] = finalData;
+						} else {
+							this.approvalData[tabKey] = [...this.approvalData[tabKey], ...finalData];
+						}
+						
+						console.log('✅ 审批数据转换完成:', finalData.length, '条记录');
+						
+						// 检查是否还有更多数据
+						if (finalData.length < this.limit) {
+							this.hasMore = false;
+						}
+						
+					} else {
+						throw new Error(`API响应错误: ${result.statusCode}`);
+					}
+					
+				} catch (error) {
+					console.error('❌ 加载审批数据失败:', error);
+					
+					// 使用模拟数据作为降级方案
+					console.log('🔄 使用模拟数据...');
+					const mockData = this.getMockData();
+					const tabKey = this.tabs[this.currentTab].key;
+					
 					let filteredData = mockData[tabKey] || [];
 					if (this.searchKeyword) {
 						filteredData = filteredData.filter(item => 
@@ -287,24 +453,104 @@
 						);
 					}
 					
-					// 如果是第一页，直接替换数据；否则追加数据
 					if (this.page === 1) {
 						this.approvalData[tabKey] = filteredData;
 					} else {
 						this.approvalData[tabKey] = [...this.approvalData[tabKey], ...filteredData];
 					}
 					
-					console.log('模拟数据加载完成:', filteredData.length, '条记录');
-					
-				} catch (error) {
-					console.error('加载审批数据错误:', error);
 					uni.showToast({
-						title: '加载失败',
+						title: '使用模拟数据',
 						icon: 'none'
 					});
+					
 				} finally {
 					this.loading = false;
 				}
+			},
+			
+			// 获取模拟数据
+			getMockData() {
+				return {
+					pending: [
+						{
+							id: '1',
+							title: '合同申请',
+							time: this.formatDate(new Date()),
+							company: '某兰公园一区改造工程',
+							contractName: '大大建设对外合同',
+							contractType: '工程合同',
+							applicant: '李想',
+							action: '提交',
+							status: '待审批',
+							statusText: '待审批',
+							amount: 100000,
+							originalData: {}
+						},
+						{
+							id: '2',
+							title: '合同申请',
+							time: this.formatDate(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+							company: '办公楼装修项目',
+							contractName: '装修工程合同',
+							contractType: '工程合同',
+							applicant: '张三',
+							action: '提交',
+							status: '待审批',
+							statusText: '待审批',
+							amount: 500000,
+							originalData: {}
+						}
+					],
+					processed: [
+						{
+							id: '3',
+							title: '合同申请',
+							time: this.formatDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+							company: '数据分析系统项目',
+							contractName: '软件开发合同',
+							contractType: '服务合同',
+							applicant: '王五',
+							action: '提交',
+							status: '已批准',
+							statusText: '已通过',
+							amount: 200000,
+							originalData: {}
+						}
+					],
+					copied: [
+						{
+							id: '4',
+							title: '合同申请',
+							time: this.formatDate(new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)),
+							company: '客户管理系统',
+							contractName: 'CRM系统开发合同',
+							contractType: '服务合同',
+							applicant: '赵六',
+							action: '提交',
+							status: '已批准',
+							statusText: '已通过',
+							amount: 300000,
+							originalData: {}
+						}
+					],
+					initiated: [
+						{
+							id: '5',
+							title: '合同申请',
+							time: this.formatDate(new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)),
+							company: '员工培训系统',
+							contractName: '培训系统开发合同',
+							contractType: '服务合同',
+							applicant: '孙七',
+							action: '提交',
+							status: '草稿',
+							statusText: '草稿',
+							amount: 150000,
+							originalData: {}
+						}
+					]
+				};
 			},
 			
 			// 格式化日期
@@ -381,12 +627,66 @@
 				try {
 					uni.showLoading({ title: '处理中...' });
 					
-					// 模拟API延迟
-					await new Promise(resolve => setTimeout(resolve, 1000));
+					console.log('🔍 开始处理审批，ID:', id, '操作:', action);
 					
+					// 构建审批数据
+					const approvalData = {
+						action: action, // 'approve' 或 'reject'
+						comments: action === 'approve' ? '审批通过' : '审批驳回'
+					};
+					
+					const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}/${id}/approve`;
+					console.log('📡 审批API请求URL:', apiUrl);
+					
+					// 调用真实的API
+					const result = await uni.request({
+						url: apiUrl,
+						method: 'POST',
+						header: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${this.getToken()}`
+						},
+						data: approvalData,
+						timeout: 10000
+					});
+					
+					console.log('📊 审批API响应:', result);
+					
+					if ((result.statusCode === 200 || result.statusCode === 201) && result.data && result.data.success) {
+						console.log('✅ 审批操作成功');
+						
+						// 更新本地数据
+						const tabKey = this.tabs[this.currentTab].key;
+						const itemIndex = this.approvalData[tabKey].findIndex(item => item.id === id);
+						
+						if (itemIndex !== -1) {
+							const item = this.approvalData[tabKey][itemIndex];
+							item.status = action === 'approve' ? '已批准' : '已拒绝';
+							item.statusText = action === 'approve' ? '已通过' : '已驳回';
+							
+							// 从待审批列表移除
+							this.approvalData[tabKey].splice(itemIndex, 1);
+							
+							// 添加到已处理列表
+							this.approvalData.processed.unshift(item);
+						}
+						
+						uni.hideLoading();
+						uni.showToast({
+							title: action === 'approve' ? '审批通过' : '审批驳回',
+							icon: 'success'
+						});
+						
+					} else {
+						throw new Error(`API错误: ${result.data?.message || '审批操作失败'}`);
+					}
+					
+				} catch (error) {
 					uni.hideLoading();
+					console.error('❌ 审批操作失败:', error);
 					
-					// 模拟审批操作
+					// 降级方案：仅更新本地状态
+					console.log('🔄 使用本地状态更新...');
 					const tabKey = this.tabs[this.currentTab].key;
 					const itemIndex = this.approvalData[tabKey].findIndex(item => item.id === id);
 					
@@ -403,15 +703,7 @@
 					}
 					
 					uni.showToast({
-						title: action === 'approve' ? '审批通过' : '审批驳回',
-						icon: 'success'
-					});
-					
-				} catch (error) {
-					uni.hideLoading();
-					console.error('审批操作错误:', error);
-					uni.showToast({
-						title: '操作失败',
+						title: action === 'approve' ? '审批通过（本地）' : '审批驳回（本地）',
 						icon: 'none'
 					});
 				}
@@ -423,9 +715,15 @@
 					'approved': 'status-approved',
 					'rejected': 'status-rejected',
 					'cancelled': 'status-cancelled',
-					'pending': 'status-pending'
+					'pending': 'status-pending',
+					'草稿': 'status-草稿',
+					'待审批': 'status-待审批',
+					'审批中': 'status-审批中',
+					'已批准': 'status-已批准',
+					'已拒绝': 'status-已拒绝',
+					'已取消': 'status-已取消'
 				};
-				return statusMap[status] || '';
+				return statusMap[status] || `status-${status}`;
 			},
 			
 			// 加载更多
@@ -454,12 +752,55 @@
 			// 加载统计数据
 			async loadStats() {
 				try {
-					console.log('开始加载统计数据...');
+					console.log('🔍 开始加载统计数据...');
 					
-					// 模拟API延迟
-					await new Promise(resolve => setTimeout(resolve, 300));
+					const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}/stats/overview`;
+					console.log('📡 统计API请求URL:', apiUrl);
 					
-					// 模拟统计数据
+					// 调用真实的API
+					const result = await uni.request({
+						url: apiUrl,
+						method: 'GET',
+						header: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${this.getToken()}`
+						},
+						timeout: 10000
+					});
+					
+					console.log('📊 统计API响应:', result);
+					
+					if (result.statusCode === 200 && result.data) {
+						let statsData = {};
+						
+						// 检查API返回的数据结构
+						if (result.data.success && result.data.data) {
+							statsData = result.data.data;
+						} else if (result.data.stats) {
+							statsData = result.data.stats;
+						} else {
+							statsData = result.data;
+						}
+						
+						this.stats = {
+							total: statsData.total || 0,
+							draft: statsData.draft || 0,
+							pending: statsData.pending || 0,
+							approved: statsData.approved || 0,
+							rejected: statsData.rejected || 0
+						};
+						
+						console.log('✅ 统计数据加载完成:', this.stats);
+						
+					} else {
+						throw new Error(`API响应错误: ${result.statusCode}`);
+					}
+					
+				} catch (error) {
+					console.error('❌ 加载统计数据失败:', error);
+					
+					// 使用模拟数据作为降级方案
+					console.log('🔄 使用模拟统计数据...');
 					this.stats = {
 						total: 5,
 						draft: 1,
@@ -468,10 +809,276 @@
 						rejected: 0
 					};
 					
-					console.log('统计数据加载完成:', this.stats);
-				} catch (error) {
-					console.error('加载统计数据错误:', error);
+					console.log('模拟统计数据:', this.stats);
 				}
+			},
+			
+			// 显示状态修改模态框
+			showStatusModal(item) {
+				console.log('准备修改状态，合同:', item);
+				this.currentEditItem = item;
+				this.selectedStatus = '';
+				this.statusComments = '';
+				this.showStatusEdit = true;
+			},
+			
+			// 关闭状态修改模态框
+			closeStatusModal() {
+				this.showStatusEdit = false;
+				this.currentEditItem = null;
+				this.selectedStatus = '';
+				this.statusComments = '';
+			},
+			
+			// 选择状态
+			selectStatus(status) {
+				this.selectedStatus = status;
+			},
+			
+			// 确认状态修改
+			async confirmStatusChange() {
+				if (!this.selectedStatus || !this.currentEditItem) {
+					return;
+				}
+				
+				try {
+					uni.showLoading({ title: '修改中...' });
+					
+					console.log('🔄 开始修改合同状态:', {
+						id: this.currentEditItem.id,
+						newStatus: this.selectedStatus,
+						comments: this.statusComments
+					});
+					
+					// 构建状态修改请求数据
+					const updateData = {
+						status: this.selectedStatus,
+						comments: this.statusComments || '状态修改',
+						updatedBy: uni.getStorageSync('userId') || 'current_user'
+					};
+					
+					const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}/${this.currentEditItem.id}`;
+					console.log('📡 状态修改API请求URL:', apiUrl);
+					
+					// 调用API修改状态
+					const result = await uni.request({
+						url: apiUrl,
+						method: 'PUT',
+						header: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${this.getToken()}`
+						},
+						data: updateData,
+						timeout: 10000
+					});
+					
+					console.log('📊 状态修改API响应:', result);
+					
+					if ((result.statusCode === 200 || result.statusCode === 201) && result.data && result.data.success) {
+						console.log('✅ 状态修改成功');
+						
+						// 更新本地数据
+						const tabKey = this.tabs[this.currentTab].key;
+						const itemIndex = this.approvalData[tabKey].findIndex(item => item.id === this.currentEditItem.id);
+						
+						if (itemIndex !== -1) {
+							this.approvalData[tabKey][itemIndex].status = this.selectedStatus;
+							this.approvalData[tabKey][itemIndex].statusText = this.getStatusText(this.selectedStatus);
+						}
+						
+						uni.hideLoading();
+						uni.showToast({
+							title: '状态修改成功',
+							icon: 'success'
+						});
+						
+						this.closeStatusModal();
+						
+						// 刷新当前标签页数据
+						setTimeout(() => {
+							this.page = 1;
+							this.hasMore = true;
+							this.loadApprovalData();
+						}, 1000);
+						
+					} else {
+						throw new Error(`API错误: ${result.data?.message || '状态修改失败'}`);
+					}
+					
+				} catch (error) {
+					uni.hideLoading();
+					console.error('❌ 状态修改失败:', error);
+					
+					// 降级方案：仅更新本地状态
+					console.log('🔄 使用本地状态更新...');
+					const tabKey = this.tabs[this.currentTab].key;
+					const itemIndex = this.approvalData[tabKey].findIndex(item => item.id === this.currentEditItem.id);
+					
+					if (itemIndex !== -1) {
+						this.approvalData[tabKey][itemIndex].status = this.selectedStatus;
+						this.approvalData[tabKey][itemIndex].statusText = this.getStatusText(this.selectedStatus);
+					}
+					
+					uni.showToast({
+						title: '状态修改成功（本地）',
+						icon: 'none'
+					});
+					
+					this.closeStatusModal();
+				}
+			},
+			
+			// API连接测试
+			async testApiConnection() {
+				console.log('🔧 开始API连接测试...');
+				this.showDebugPanel = true;
+				
+				try {
+					const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}`;
+					this.debugInfo.lastRequest = apiUrl;
+					
+					uni.showLoading({ title: '测试中...' });
+					
+					const result = await uni.request({
+						url: apiUrl,
+						method: 'GET',
+						header: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${this.getToken()}`
+						},
+						timeout: 10000
+					});
+					
+					uni.hideLoading();
+					
+					this.debugInfo.responseStatus = `${result.statusCode} - ${result.data?.success ? '成功' : '失败'}`;
+					this.debugInfo.apiStatus = result.statusCode === 200 ? '正常' : '异常';
+					
+					if (result.data?.data?.applications) {
+						this.debugInfo.dataCount = result.data.data.applications.length;
+					} else if (Array.isArray(result.data?.data)) {
+						this.debugInfo.dataCount = result.data.data.length;
+					} else {
+						this.debugInfo.dataCount = 0;
+					}
+					
+					console.log('✅ API测试完成:', result);
+					
+					uni.showToast({
+						title: `API状态: ${this.debugInfo.apiStatus}`,
+						icon: 'none'
+					});
+					
+				} catch (error) {
+					uni.hideLoading();
+					console.error('❌ API测试失败:', error);
+					
+					this.debugInfo.apiStatus = '连接失败';
+					this.debugInfo.responseStatus = error.message;
+					this.debugInfo.dataCount = 0;
+					
+					uni.showToast({
+						title: 'API连接失败',
+						icon: 'none'
+					});
+				}
+			},
+			
+			// 测试数据库状态
+			async testDatabase() {
+				try {
+					uni.showLoading({ title: '检查数据库...' });
+					
+					const result = await uni.request({
+						url: `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}/debug`,
+						method: 'GET',
+						header: {
+							'Content-Type': 'application/json'
+						},
+						timeout: 10000
+					});
+					
+					uni.hideLoading();
+					
+					console.log('📊 数据库状态:', result.data);
+					
+					if (result.data?.success) {
+						const data = result.data.data;
+						const message = `数据库: ${data.database.connected ? '已连接' : '未连接'}\n` +
+										`集合: ${data.collection.exists ? '存在' : '不存在'}\n` +
+										`数据条数: ${data.data?.total || 0}`;
+						
+						uni.showModal({
+							title: '数据库状态',
+							content: message,
+							showCancel: false
+						});
+					} else {
+						throw new Error(result.data?.message || '检查失败');
+					}
+					
+				} catch (error) {
+					uni.hideLoading();
+					console.error('❌ 数据库检查失败:', error);
+					
+					uni.showModal({
+						title: '数据库检查失败',
+						content: error.message,
+						showCancel: false
+					});
+				}
+			},
+			
+			// 创建测试数据
+			async createTestData() {
+				try {
+					uni.showLoading({ title: '创建测试数据...' });
+					
+					const result = await uni.request({
+						url: `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}/test-data`,
+						method: 'POST',
+						header: {
+							'Content-Type': 'application/json'
+						},
+						timeout: 30000
+					});
+					
+					uni.hideLoading();
+					
+					console.log('📊 测试数据创建结果:', result.data);
+					
+					if (result.data?.success) {
+						uni.showToast({
+							title: '测试数据创建成功',
+							icon: 'success'
+						});
+						
+						// 刷新数据
+						setTimeout(() => {
+							this.refreshData();
+						}, 1000);
+					} else {
+						throw new Error(result.data?.message || '创建失败');
+					}
+					
+				} catch (error) {
+					uni.hideLoading();
+					console.error('❌ 创建测试数据失败:', error);
+					
+					uni.showToast({
+						title: '创建测试数据失败',
+						icon: 'none'
+					});
+				}
+			},
+			
+			// 刷新数据
+			refreshData() {
+				console.log('🔄 手动刷新数据...');
+				this.page = 1;
+				this.hasMore = true;
+				this.loadApprovalData();
+				this.loadStats();
 			}
 		},
 		
@@ -775,6 +1382,36 @@
 							background-color: #fff7e6;
 							color: #fa8c16;
 						}
+						
+						&.status-草稿 {
+							background-color: #f5f5f5;
+							color: #999;
+						}
+						
+						&.status-待审批 {
+							background-color: #fff7e6;
+							color: #fa8c16;
+						}
+						
+						&.status-审批中 {
+							background-color: #e6f7ff;
+							color: #1890ff;
+						}
+						
+						&.status-已批准 {
+							background-color: #e8f5e8;
+							color: #52c41a;
+						}
+						
+						&.status-已拒绝 {
+							background-color: #ffeaea;
+							color: #ff4d4f;
+						}
+						
+						&.status-已取消 {
+							background-color: #f0f0f0;
+							color: #999;
+						}
 					}
 				}
 			}
@@ -800,6 +1437,342 @@
 		.empty-text {
 			font-size: 14px;
 			color: #999;
+		}
+	}
+
+	/* 状态修改相关样式 */
+	.status-section {
+		flex-shrink: 0;
+		
+		.status-tag {
+			display: flex;
+			align-items: center;
+			padding: 4px 8px;
+			border-radius: 12px;
+			cursor: pointer;
+			transition: all 0.3s ease;
+			
+			&:hover {
+				opacity: 0.8;
+				transform: scale(1.05);
+			}
+			
+			.edit-icon {
+				margin-left: 4px;
+				font-size: 10px;
+				opacity: 0.7;
+			}
+		}
+	}
+
+	/* 状态修改模态框 */
+	.status-modal {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		
+		.modal-content {
+			background: #ffffff;
+			border-radius: 12px;
+			width: 90%;
+			max-width: 400px;
+			max-height: 80vh;
+			overflow: hidden;
+			display: flex;
+			flex-direction: column;
+		}
+		
+		.modal-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 16px 20px;
+			border-bottom: 1px solid #f0f0f0;
+			
+			.modal-title {
+				font-size: 18px;
+				font-weight: 600;
+				color: #333;
+			}
+			
+			.close-btn {
+				width: 24px;
+				height: 24px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				color: #999;
+				font-size: 16px;
+				cursor: pointer;
+			}
+		}
+		
+		.modal-body {
+			flex: 1;
+			padding: 20px;
+			overflow-y: auto;
+			
+			.contract-info {
+				margin-bottom: 20px;
+				padding: 12px;
+				background: #f8f9fa;
+				border-radius: 8px;
+				
+				.contract-name {
+					display: block;
+					font-size: 16px;
+					font-weight: 600;
+					color: #333;
+					margin-bottom: 4px;
+				}
+				
+				.contract-company {
+					display: block;
+					font-size: 14px;
+					color: #666;
+				}
+			}
+			
+			.section-title {
+				display: block;
+				font-size: 14px;
+				font-weight: 600;
+				color: #333;
+				margin-bottom: 12px;
+			}
+		}
+		
+		.status-options {
+			margin-bottom: 20px;
+			
+			.status-list {
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+			}
+			
+			.status-option {
+				display: flex;
+				align-items: center;
+				padding: 12px;
+				border: 1px solid #e5e5e5;
+				border-radius: 8px;
+				cursor: pointer;
+				transition: all 0.3s ease;
+				
+				&:hover {
+					border-color: #00d4aa;
+					background: #f0fffe;
+				}
+				
+				&.active {
+					border-color: #00d4aa;
+					background: #e8f5f0;
+				}
+				
+				.status-indicator {
+					width: 12px;
+					height: 12px;
+					border-radius: 50%;
+					margin-right: 8px;
+					
+					&.status-approved {
+						background: #52c41a;
+					}
+					
+					&.status-rejected {
+						background: #ff4d4f;
+					}
+					
+					&.status-cancelled {
+						background: #999;
+					}
+					
+					&.status-pending {
+						background: #fa8c16;
+					}
+					
+					&.status-草稿 {
+						background: #d9d9d9;
+					}
+					
+					&.status-待审批 {
+						background: #fa8c16;
+					}
+					
+					&.status-审批中 {
+						background: #1890ff;
+					}
+					
+					&.status-已批准 {
+						background: #52c41a;
+					}
+					
+					&.status-已拒绝 {
+						background: #ff4d4f;
+					}
+					
+					&.status-已取消 {
+						background: #999;
+					}
+				}
+				
+				.status-name {
+					font-size: 14px;
+					color: #333;
+				}
+			}
+		}
+		
+		.comments-section {
+			.comments-input {
+				width: 100%;
+				min-height: 80px;
+				padding: 12px;
+				border: 1px solid #e5e5e5;
+				border-radius: 8px;
+				font-size: 14px;
+				color: #333;
+				background: #ffffff;
+				resize: none;
+				
+				&:focus {
+					border-color: #00d4aa;
+					outline: none;
+				}
+				
+				&::placeholder {
+					color: #999;
+				}
+			}
+		}
+		
+		.modal-footer {
+			display: flex;
+			align-items: center;
+			justify-content: flex-end;
+			gap: 12px;
+			padding: 16px 20px;
+			border-top: 1px solid #f0f0f0;
+			
+			button {
+				padding: 8px 16px;
+				border-radius: 6px;
+				font-size: 14px;
+				border: none;
+				cursor: pointer;
+				
+				&.btn-cancel {
+					background: #f5f5f5;
+					color: #666;
+				}
+				
+				&.btn-confirm {
+					background: #00d4aa;
+					color: #ffffff;
+					
+					&:disabled {
+						background: #ccc;
+						cursor: not-allowed;
+					}
+				}
+			}
+		}
+	}
+
+	/* 调试面板样式 */
+	.debug-panel {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		background: #ffffff;
+		border-radius: 12px;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+		width: 90%;
+		max-width: 400px;
+		z-index: 2000;
+		
+		.debug-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 16px 20px;
+			border-bottom: 1px solid #f0f0f0;
+			background: #f8f9fa;
+			border-radius: 12px 12px 0 0;
+			
+			.debug-title {
+				font-size: 16px;
+				font-weight: 600;
+				color: #333;
+			}
+			
+			.close-debug-btn {
+				width: 24px;
+				height: 24px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				color: #999;
+				font-size: 16px;
+				cursor: pointer;
+			}
+		}
+		
+		.debug-content {
+			padding: 20px;
+			
+			.debug-item {
+				display: flex;
+				align-items: center;
+				margin-bottom: 12px;
+				
+				.debug-label {
+					width: 80px;
+					font-size: 14px;
+					color: #666;
+					flex-shrink: 0;
+				}
+				
+				.debug-value {
+					flex: 1;
+					font-size: 14px;
+					color: #333;
+					word-break: break-all;
+				}
+			}
+			
+			.debug-actions {
+				margin-top: 20px;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+				
+				.debug-btn {
+					flex: 1;
+					min-width: 80px;
+					padding: 8px 12px;
+					border: 1px solid #00d4aa;
+					border-radius: 6px;
+					background: #ffffff;
+					color: #00d4aa;
+					font-size: 12px;
+					text-align: center;
+					
+					&:active {
+						background: #00d4aa;
+						color: #ffffff;
+					}
+				}
+			}
 		}
 	}
 </style>

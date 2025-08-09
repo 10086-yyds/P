@@ -23,11 +23,11 @@ const baseConfig = {
   // 数据库配置
   database: {
     // MongoDB Atlas 连接字符串 - 从环境变量读取
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hou_db',
+    uri: process.env.MONGODB_URI || 'mongodb+srv://2732849023:kV2y2TU4cYPq6Y9C@cluster0.plvxg2d.mongodb.net/bookkeeping_dev',
     // 本地 MongoDB 配置（备用）
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 27017,
-    name: process.env.DB_NAME || 'hou_db'
+    name: process.env.DB_NAME || 'bookkeeping_dev'
   },
 
   // 日志配置
@@ -55,9 +55,9 @@ const development = {
   },
   database: {
     ...baseConfig.database,
-    // 开发环境使用环境变量或本地数据库
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/hou_dev',
-    name: process.env.DB_NAME || 'hou_dev'
+    // 开发环境使用环境变量或 MongoDB Atlas
+    uri: process.env.MONGODB_URI || 'mongodb+srv://2732849023:kV2y2TU4cYPq6Y9C@cluster0.plvxg2d.mongodb.net/bookkeeping_dev',
+    name: process.env.DB_NAME || 'bookkeeping_dev'
   },
   logging: {
     level: 'debug',
