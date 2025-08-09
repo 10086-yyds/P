@@ -1,3 +1,6 @@
+// {{ AURA-X: Add - 加载环境变量支持GitHub OAuth配置. }}
+require('dotenv').config();
+
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
@@ -17,7 +20,7 @@ var usersRouter = require('./routes/users');
 var jbhRouter = require('./routes/jbh');
 var lzRouter = require('./routes/lz');
 var wxyRouter = require('./routes/wxy');
-var zjfRouter = require('./routes/zjf/index.js');
+var zjfRouter = require('./routes/zjf');
 
 var app = express();
 
@@ -106,7 +109,6 @@ app.use('/lz', lzRouter);
 app.use('/wxy', wxyRouter);
 app.use('/zjf', zjfRouter); // 确保 /zjf 路由正确挂载
 
-// 404 处理
 app.use(function (req, res, next) {
   next(createError(404));
 });
