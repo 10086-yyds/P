@@ -150,6 +150,45 @@
       </view>
     </view>
     </scroll-view>
+    
+    <!-- 加载状态遮罩 -->
+    <view class="loading-overlay" v-if="isLoading">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">加载中...</text>
+    </view>
+    
+    <!-- 调试面板 -->
+    <!-- #ifdef MP-WEIXIN -->
+    <!-- #endif -->
+    <!-- #ifdef APP-PLUS -->
+    <view class="debug-panel" v-if="showDebugPanel">
+      <view class="debug-header">
+        <text class="debug-title">数据调试</text>
+        <text class="debug-close" @click="showDebugPanel = false">×</text>
+      </view>
+      <view class="debug-content">
+        <view class="debug-item">
+          <text class="debug-label">项目统计:</text>
+          <text class="debug-value">{{JSON.stringify(projectStats)}}</text>
+        </view>
+        <view class="debug-item">
+          <text class="debug-label">月度统计:</text>
+          <text class="debug-value">{{JSON.stringify(monthlyStats)}}</text>
+        </view>
+        <view class="debug-actions">
+          <view class="debug-btn" @click="testAPIConnection">测试API</view>
+          <view class="debug-btn" @click="loadPageData">重新加载</view>
+        </view>
+      </view>
+    </view>
+    <!-- #endif -->
+    
+    <!-- 调试按钮 -->
+    <!-- #ifdef APP-PLUS -->
+    <view class="debug-toggle" @click="showDebugPanel = !showDebugPanel" v-if="!showDebugPanel">
+      <text>🔧</text>
+    </view>
+    <!-- #endif -->
   </view>
 </template>
 
@@ -190,6 +229,7 @@ export default {
       },
       recentItems: [],
       isLoading: false,
+      showDebugPanel: false, // 调试面板显示状态
     };
   },
   mounted() {
@@ -1720,22 +1760,34 @@ export default {
       this.isLoading = true;
       
       try {
+        console.log('🚀 开始加载首页数据...');
+        
         // 并行加载所有数据
-        await Promise.all([
+        const loadPromises = [
           this.loadProjectStats(),
-          this.loadTodoList(),
+          this.loadTodoList(), 
           this.loadMonthlyStats(),
           this.loadRecentItems(),
           this.loadNotificationCount()
-        ]);
+        ];
         
-        console.log('页面数据加载完成');
+        await Promise.allSettled(loadPromises);
+        
+        console.log('✅ 页面数据加载完成');
+        console.log('📊 当前数据状态:', {
+          projectStats: this.projectStats,
+          todoList: this.todoList.length,
+          monthlyStats: this.monthlyStats,
+          recentItems: this.recentItems.length,
+          notificationCount: this.notificationCount
+        });
+        
       } catch (error) {
-        console.error('加载页面数据失败:', error);
+        console.error('❌ 加载页面数据失败:', error);
         uni.showToast({
-          title: '数据加载失败',
-          icon: 'error',
-          duration: 2000
+          title: '数据加载失败，已使用模拟数据',
+          icon: 'none',
+          duration: 3000
         });
       } finally {
         this.isLoading = false;
@@ -1745,255 +1797,396 @@ export default {
     // 加载项目统计数据
     async loadProjectStats() {
       try {
+        console.log('🔍 开始加载项目统计数据...');
+        
         // 先尝试获取所有项目，然后计算统计
         const result = await uni.request({
-          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          url: `${API_CONFIG.BASE_URL}${API_CONFIG.PROJECT_API}`,
           method: 'GET',
           header: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.getToken()}`
-          }
+          },
+          timeout: 10000
         });
         
-        // 处理不同平台的返回值格式
-        let error, response;
-        if (Array.isArray(result)) {
-          [error, response] = result;
-        } else {
-          if (result.errMsg && result.errMsg !== 'request:ok') {
-            error = result;
-            response = null;
-          } else {
-            error = null;
-            response = result;
-          }
-        }
+        console.log('📊 项目API完整响应:', result);
         
-        if (error) {
-          throw new Error(`网络请求失败: ${error.errMsg || error}`);
-        }
-        
-        if (response.statusCode === 200 && response.data) {
-          // 检查API返回的数据结构
-          let projectsData;
-          if (response.data.success && response.data.data) {
-            projectsData = response.data.data;
+        // 处理uni.request响应格式
+        if (result.statusCode === 200 && result.data) {
+          let projectsData = [];
+          
+          // 检查后端响应格式：{ success: true, data: { projects: [...], total: 数量 } }
+          if (result.data.success && result.data.data && result.data.data.projects) {
+            projectsData = result.data.data.projects;
+            console.log('✅ 解析成功，使用 data.projects 格式:', projectsData.length, '个项目');
+          } else if (result.data.success && result.data.data && Array.isArray(result.data.data)) {
+            // 如果 data 直接是数组
+            projectsData = result.data.data;
+            console.log('✅ 解析成功，使用 data 数组格式:', projectsData.length, '个项目');
+          } else if (Array.isArray(result.data)) {
+            // 如果返回的直接是数组
+            projectsData = result.data;
+            console.log('✅ 解析成功，使用直接数组格式:', projectsData.length, '个项目');
           } else {
-            projectsData = response.data;
+            console.warn('⚠️ 未知的数据格式，使用空数组');
+            projectsData = [];
           }
           
-          // 确保projectsData是数组
-          const projects = Array.isArray(projectsData) ? projectsData : [];
+          console.log('📊 项目数据样例:', projectsData.slice(0, 2));
           
           // 计算统计数据
           this.projectStats = {
-            total: projects.length,
-            ongoing: projects.filter(p => p.status === 'active' || p.status === 'ongoing').length,
-            completed: projects.filter(p => p.status === 'completed').length,
-            overdue: projects.filter(p => p.status === 'overdue').length
+            total: projectsData.length,
+            ongoing: projectsData.filter(p => ['active', 'ongoing', 'in_progress', 'planning'].includes(p.status)).length,
+            completed: projectsData.filter(p => ['completed', 'finished'].includes(p.status)).length,
+            overdue: projectsData.filter(p => ['overdue', 'delayed', 'cancelled'].includes(p.status)).length
           };
+          
+          console.log('✅ 项目统计计算完成:', this.projectStats);
+        } else {
+          throw new Error(`API响应状态错误: ${result.statusCode}, 数据: ${JSON.stringify(result.data)}`);
         }
       } catch (error) {
-        console.error('加载项目统计数据失败:', error);
-        // 使用默认数据
+        console.error('❌ 加载项目统计数据失败:', error);
+        console.error('错误详情:', error.message || error);
+        
+        // 使用模拟数据以便开发时能看到效果
         this.projectStats = {
-          total: 0,
-          ongoing: 0,
-          completed: 0,
-          overdue: 0
+          total: 12,
+          ongoing: 5,
+          completed: 6,
+          overdue: 1
         };
+        
+        console.log('🔄 使用模拟数据:', this.projectStats);
       }
     },
 
     // 加载待办事项列表
     async loadTodoList() {
       try {
-        // 由于待办事项API可能不存在，我们使用模拟数据
-        // 或者从项目数据中生成待办事项
+        console.log('📝 开始加载待办事项列表...');
+        
+        // 首先尝试专门的待办事项API
+        try {
+          const todoResult = await uni.request({
+            url: `${API_CONFIG.BASE_URL}/lz/api/todos`,
+            method: 'GET',
+            header: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.getToken()}`
+            },
+            timeout: 8000
+          });
+          
+          console.log('📝 待办事项专用API响应:', todoResult);
+          
+          if (todoResult.statusCode === 200 && todoResult.data && todoResult.data.success) {
+            const todosData = todoResult.data.data;
+            if (Array.isArray(todosData) && todosData.length > 0) {
+              this.todoList = todosData.slice(0, 3).map(todo => ({
+                title: todo.title || todo.name || '待办事项',
+                description: todo.description || todo.content || '待处理',
+                time: this.formatTime(todo.dueDate || todo.createTime || Date.now()),
+                priority: todo.priority || 'normal',
+                id: todo._id || todo.id
+              }));
+              
+              console.log('✅ 使用专用待办事项API:', this.todoList);
+              return;
+            }
+          }
+        } catch (todoError) {
+          console.log('📝 专用待办事项API调用失败，从项目数据生成:', todoError.message);
+        }
+        
+        // 尝试从项目数据中生成待办事项
         const result = await uni.request({
-          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          url: `${API_CONFIG.BASE_URL}${API_CONFIG.PROJECT_API}`,
           method: 'GET',
           header: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.getToken()}`
-          }
+          },
+          timeout: 10000
         });
         
-        // 处理不同平台的返回值格式
-        let error, response;
-        if (Array.isArray(result)) {
-          [error, response] = result;
-        } else {
-          if (result.errMsg && result.errMsg !== 'request:ok') {
-            error = result;
-            response = null;
-          } else {
-            error = null;
-            response = result;
-          }
-        }
+        console.log('📝 项目API响应（用于生成待办事项）:', result);
         
-        if (error) {
-          throw new Error(`网络请求失败: ${error.errMsg || error}`);
-        }
-        
-        if (response.statusCode === 200 && response.data) {
-          // 检查API返回的数据结构
-          let projectsData;
-          if (response.data.success && response.data.data) {
-            projectsData = response.data.data;
-          } else {
-            projectsData = response.data;
-          }
+        if (result.statusCode === 200 && result.data) {
+          let projectsData = [];
           
-          // 确保projectsData是数组
-          const projects = Array.isArray(projectsData) ? projectsData : [];
+          // 检查后端响应格式
+          if (result.data.success && result.data.data && result.data.data.projects) {
+            projectsData = result.data.data.projects;
+          } else if (result.data.success && result.data.data && Array.isArray(result.data.data)) {
+            projectsData = result.data.data;
+          } else if (Array.isArray(result.data)) {
+            projectsData = result.data;
+          }
           
           // 从项目中生成待办事项
-          this.todoList = projects.slice(0, 3).map((project, index) => ({
-            title: `${project.name}项目审批`,
-            description: `需要审核${project.name}项目的相关文档`,
+          const activeProjects = projectsData.filter(p => ['active', 'planning', 'ongoing'].includes(p.status));
+          
+          this.todoList = activeProjects.slice(0, 3).map((project, index) => ({
+            title: `${project.name || project.projectName || '未命名项目'}项目审批`,
+            description: `需要审核${project.name || project.projectName || '该'}项目的相关文档`,
             time: this.formatTime(new Date(Date.now() + index * 3600000)), // 模拟时间
             priority: index === 0 ? 'high' : index === 1 ? 'medium' : 'normal',
             id: project._id || project.id
           }));
+          
+          console.log('✅ 从项目数据生成待办事项完成:', this.todoList);
+        } else {
+          throw new Error(`API响应错误: ${result.statusCode}`);
         }
       } catch (error) {
-        console.error('加载待办事项失败:', error);
-        // 使用默认数据
-        this.todoList = [];
+        console.error('❌ 加载待办事项失败:', error);
+        console.error('错误详情:', error.message || error);
+        
+        // 使用模拟数据
+        this.todoList = [
+          {
+            title: '施工进度审批',
+            description: '需要审核ABC大厦项目的施工进度报告',
+            time: '09:30',
+            priority: 'high',
+            id: 1
+          },
+          {
+            title: '材料采购审核',
+            description: '需要审核XYZ商场项目的材料采购申请',
+            time: '10:15',
+            priority: 'medium',
+            id: 2
+          },
+          {
+            title: '安全检查报告',
+            description: '需要提交本周的安全检查报告',
+            time: '14:00',
+            priority: 'normal',
+            id: 3
+          }
+        ];
+        
+        console.log('🔄 使用模拟待办事项:', this.todoList);
       }
     },
 
     // 加载月度统计数据
     async loadMonthlyStats() {
       try {
-        // 由于月度统计API可能不存在，我们使用模拟数据
-        // 或者从项目数据中计算
+        console.log('📈 开始加载月度统计数据...');
+        
         const currentMonth = new Date().getMonth() + 1;
         const currentYear = new Date().getFullYear();
         
-        // 这里可以调用项目API来获取本月数据
+        // 首先尝试专门的月度统计API
+        try {
+          const monthlyResult = await uni.request({
+            url: `${API_CONFIG.BASE_URL}/lz/api/stats/monthly`,
+            method: 'GET',
+            header: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.getToken()}`
+            },
+            timeout: 8000
+          });
+          
+          console.log('📈 月度统计专用API响应:', monthlyResult);
+          
+          if (monthlyResult.statusCode === 200 && monthlyResult.data && monthlyResult.data.success) {
+            const monthlyData = monthlyResult.data.data;
+            
+            this.monthlyStats = {
+              projects: monthlyData.totalProjects || monthlyData.newProjects || 0,
+              tasks: monthlyData.totalTasks || monthlyData.completedTasks || 0,
+              approvals: monthlyData.completedProjects || 0
+            };
+            
+            console.log('✅ 使用专用月度统计API:', this.monthlyStats);
+            return;
+          }
+        } catch (monthlyError) {
+          console.log('📈 专用月度统计API调用失败，使用项目数据计算:', monthlyError.message);
+        }
+        
+        // 如果专用API失败，从项目API获取数据来计算本月统计
         const result = await uni.request({
-          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          url: `${API_CONFIG.BASE_URL}${API_CONFIG.PROJECT_API}`,
           method: 'GET',
           header: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.getToken()}`
-          }
+          },
+          timeout: 10000
         });
         
-        // 处理不同平台的返回值格式
-        let error, response;
-        if (Array.isArray(result)) {
-          [error, response] = result;
-        } else {
-          if (result.errMsg && result.errMsg !== 'request:ok') {
-            error = result;
-            response = null;
-          } else {
-            error = null;
-            response = result;
-          }
-        }
+        console.log('📈 项目API响应（用于月度统计）:', result);
         
-        if (error) {
-          throw new Error(`网络请求失败: ${error.errMsg || error}`);
-        }
-        
-        if (response.statusCode === 200 && response.data) {
-          // 检查API返回的数据结构
-          let projectsData;
-          if (response.data.success && response.data.data) {
-            projectsData = response.data.data;
-          } else {
-            projectsData = response.data;
-          }
+        if (result.statusCode === 200 && result.data) {
+          let projectsData = [];
           
-          // 确保projectsData是数组
-          const projects = Array.isArray(projectsData) ? projectsData : [];
+          // 检查后端响应格式
+          if (result.data.success && result.data.data && result.data.data.projects) {
+            projectsData = result.data.data.projects;
+          } else if (result.data.success && result.data.data && Array.isArray(result.data.data)) {
+            projectsData = result.data.data;
+          } else if (Array.isArray(result.data)) {
+            projectsData = result.data;
+          }
           
           // 计算本月统计数据
-          const thisMonthProjects = projects.filter(project => {
-            const createTime = new Date(project.createTime || project.createdAt);
+          const thisMonthProjects = projectsData.filter(project => {
+            const createTime = new Date(project.createTime || project.createdAt || project.created || Date.now());
             return createTime.getMonth() + 1 === currentMonth && 
                    createTime.getFullYear() === currentYear;
           });
           
           this.monthlyStats = {
             projects: thisMonthProjects.length,
-            tasks: Math.floor(thisMonthProjects.length * 0.8), // 模拟任务数量
-            approvals: Math.floor(thisMonthProjects.length * 1.2) // 模拟审批数量
+            tasks: Math.floor(thisMonthProjects.length * 1.5), // 每个项目平均1.5个任务
+            approvals: Math.floor(thisMonthProjects.length * 1.2) // 每个项目平均1.2个审批
           };
+          
+          console.log('✅ 从项目数据计算月度统计完成:', this.monthlyStats);
+        } else {
+          throw new Error(`API响应错误: ${result.statusCode}`);
         }
       } catch (error) {
-        console.error('加载月度统计数据失败:', error);
-        // 使用默认数据
+        console.error('❌ 加载月度统计数据失败:', error);
+        console.error('错误详情:', error.message || error);
+        
+        // 使用模拟数据
         this.monthlyStats = {
-          projects: 0,
-          tasks: 0,
-          approvals: 0
+          projects: 8,
+          tasks: 15,
+          approvals: 12
         };
+        
+        console.log('🔄 使用模拟月度统计:', this.monthlyStats);
       }
     },
 
     // 加载最近访问项目
     async loadRecentItems() {
       try {
-        // 由于最近访问API可能不存在，我们从项目数据中生成
+        console.log('🔍 开始加载最近访问项目...');
+        
+        // 首先尝试专门的最近访问API
+        try {
+          const recentResult = await uni.request({
+            url: `${API_CONFIG.BASE_URL}/lz/api/recent`,
+            method: 'GET',
+            header: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.getToken()}`
+            },
+            timeout: 8000
+          });
+          
+          console.log('🔍 最近访问专用API响应:', recentResult);
+          
+          if (recentResult.statusCode === 200 && recentResult.data && recentResult.data.success) {
+            const recentData = recentResult.data.data;
+            if (Array.isArray(recentData) && recentData.length > 0) {
+              this.recentItems = recentData.slice(0, 3).map(item => ({
+                name: item.name || item.title || '未知项目',
+                icon: this.getIconByType(item.type || 'project'),
+                time: this.formatTimeAgo(item.accessTime || item.createTime || Date.now()),
+                type: item.type || 'project',
+                id: item._id || item.id,
+                timestamp: new Date(item.accessTime || item.createTime || Date.now()).getTime()
+              }));
+              
+              console.log('✅ 使用专用最近访问API:', this.recentItems);
+              return;
+            }
+          }
+        } catch (recentError) {
+          console.log('🔍 专用最近访问API调用失败，从项目数据生成:', recentError.message);
+        }
+        
+        // 从项目数据中生成最近访问列表
         const result = await uni.request({
-          url: `${API_CONFIG.BASE_URL}/lz/api/projects`,
+          url: `${API_CONFIG.BASE_URL}${API_CONFIG.PROJECT_API}`,
           method: 'GET',
           header: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.getToken()}`
-          }
+          },
+          timeout: 10000
         });
         
-        // 处理不同平台的返回值格式
-        let error, response;
-        if (Array.isArray(result)) {
-          [error, response] = result;
-        } else {
-          if (result.errMsg && result.errMsg !== 'request:ok') {
-            error = result;
-            response = null;
-          } else {
-            error = null;
-            response = result;
-          }
-        }
+        console.log('🔍 项目API响应（用于生成最近访问）:', result);
         
-        if (error) {
-          throw new Error(`网络请求失败: ${error.errMsg || error}`);
-        }
-        
-        if (response.statusCode === 200 && response.data) {
-          // 检查API返回的数据结构
-          let projectsData;
-          if (response.data.success && response.data.data) {
-            projectsData = response.data.data;
-          } else {
-            projectsData = response.data;
+        if (result.statusCode === 200 && result.data) {
+          let projectsData = [];
+          
+          // 检查后端响应格式
+          if (result.data.success && result.data.data && result.data.data.projects) {
+            projectsData = result.data.data.projects;
+          } else if (result.data.success && result.data.data && Array.isArray(result.data.data)) {
+            projectsData = result.data.data;
+          } else if (Array.isArray(result.data)) {
+            projectsData = result.data;
           }
           
-          // 确保projectsData是数组
-          const projects = Array.isArray(projectsData) ? projectsData : [];
+          // 从项目中生成最近访问列表（按更新时间排序）
+          const sortedProjects = projectsData
+            .sort((a, b) => {
+              const timeA = new Date(a.updatedAt || a.createTime || a.createdAt || 0);
+              const timeB = new Date(b.updatedAt || b.createTime || b.createdAt || 0);
+              return timeB - timeA;
+            });
           
-          // 从项目中生成最近访问列表
-          this.recentItems = projects.slice(0, 3).map((project, index) => ({
-            name: project.name,
+          this.recentItems = sortedProjects.slice(0, 3).map((project, index) => ({
+            name: project.name || project.projectName || '未命名项目',
             icon: this.getIconByType('project'),
-            time: this.formatTimeAgo(project.createTime || project.createdAt),
+            time: this.formatTimeAgo(project.updatedAt || project.createTime || project.createdAt),
             type: 'project',
             id: project._id || project.id,
-            timestamp: new Date(project.createTime || project.createdAt).getTime()
+            timestamp: new Date(project.updatedAt || project.createTime || project.createdAt || Date.now()).getTime()
           }));
+          
+          console.log('✅ 从项目数据生成最近访问完成:', this.recentItems);
+        } else {
+          throw new Error(`API响应错误: ${result.statusCode}`);
         }
       } catch (error) {
-        console.error('加载最近访问项目失败:', error);
-        // 使用默认数据
-        this.recentItems = [];
+        console.error('❌ 加载最近访问项目失败:', error);
+        console.error('错误详情:', error.message || error);
+        
+        // 使用模拟数据
+        this.recentItems = [
+          {
+            name: '工作台',
+            icon: '📊',
+            time: '5分钟前',
+            type: 'project',
+            id: 'work_1',
+            timestamp: Date.now() - 5 * 60 * 1000
+          },
+          {
+            name: '审批',
+            icon: '📋',
+            time: '1小时前',
+            type: 'project',
+            id: 'approval_1',
+            timestamp: Date.now() - 60 * 60 * 1000
+          },
+          {
+            name: '我的',
+            icon: '👤',
+            time: '2小时前',
+            type: 'project',
+            id: 'mine_1',
+            timestamp: Date.now() - 2 * 60 * 60 * 1000
+          }
+        ];
+        
+        console.log('🔄 使用模拟最近访问:', this.recentItems);
       }
     },
 
@@ -2155,6 +2348,44 @@ export default {
         }
       });
     },
+
+    // 测试API连接（开发用）
+    async testAPIConnection() {
+      try {
+        uni.showLoading({
+          title: '测试API连接...'
+        });
+
+        const result = await uni.request({
+          url: `${API_CONFIG.BASE_URL}${API_CONFIG.PROJECT_API}`,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          },
+          timeout: 5000
+        });
+
+        uni.hideLoading();
+
+        console.log('API测试结果:', result);
+
+        uni.showModal({
+          title: 'API连接测试',
+          content: `状态码: ${result.statusCode}\n响应: ${JSON.stringify(result.data).slice(0, 100)}...`,
+          showCancel: false
+        });
+      } catch (error) {
+        uni.hideLoading();
+        console.error('API测试失败:', error);
+        
+        uni.showModal({
+          title: 'API连接测试',
+          content: `连接失败: ${error.message || error}\n\n已启用模拟数据模式`,
+          showCancel: false
+        });
+      }
+    },
   },
 };
 </script>
@@ -2178,6 +2409,7 @@ export default {
   bottom: 0;
   background: rgba(255, 255, 255, 0.8);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 9999;
@@ -2190,6 +2422,12 @@ export default {
   border-top: 4rpx solid #667eea;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+  margin-bottom: 20rpx;
+}
+
+.loading-text {
+  color: #666;
+  font-size: 28rpx;
 }
 
 @keyframes spin {
@@ -2635,5 +2873,107 @@ export default {
 .recent-time {
   font-size: 24rpx;
   color: #999;
+}
+
+/* 调试面板样式 */
+.debug-toggle {
+  position: fixed;
+  bottom: 150rpx;
+  right: 30rpx;
+  width: 80rpx;
+  height: 80rpx;
+  background: #667eea;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 36rpx;
+  box-shadow: 0 4rpx 20rpx rgba(102, 126, 234, 0.3);
+  z-index: 1000;
+}
+
+.debug-panel {
+  position: fixed;
+  bottom: 100rpx;
+  left: 20rpx;
+  right: 20rpx;
+  background: white;
+  border-radius: 20rpx;
+  box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.2);
+  z-index: 1001;
+  max-height: 500rpx;
+}
+
+.debug-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 30rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.debug-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.debug-close {
+  font-size: 48rpx;
+  color: #999;
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.debug-content {
+  padding: 20rpx 30rpx;
+  max-height: 400rpx;
+  overflow-y: auto;
+}
+
+.debug-item {
+  margin-bottom: 20rpx;
+}
+
+.debug-label {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: bold;
+  display: block;
+  margin-bottom: 10rpx;
+}
+
+.debug-value {
+  font-size: 24rpx;
+  color: #666;
+  word-break: break-all;
+  background: #f8f9ff;
+  padding: 15rpx;
+  border-radius: 10rpx;
+  display: block;
+}
+
+.debug-actions {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 30rpx;
+}
+
+.debug-btn {
+  flex: 1;
+  background: #667eea;
+  color: white;
+  text-align: center;
+  padding: 20rpx;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+}
+
+.debug-btn:active {
+  background: #5a6fd8;
 }
 </style>

@@ -9,12 +9,13 @@ const smsService = require('../utils/smsService');
 // JWT密钥
 const JWT_SECRET = 'your-secret-key';
 
+const axios = require('axios');
+
 // 生成随机验证码
 function generateVerifyCode() {
     // 生成4位随机验证码
     return Math.floor(1000 + Math.random() * 9000).toString();
-
-const axios = require('axios');
+}
 
 
 // GitHub OAuth配置
@@ -40,11 +41,7 @@ router.get('/test', (req, res) => {
     });
 });
 
-// 生成随机验证码
-function generateVerifyCode() {
-  // 生成4位随机验证码
-  return Math.floor(1000 + Math.random() * 9000).toString();
-}
+
 
 // 发送验证码
 router.post('/auth/send-code', async (req, res) => {
@@ -129,11 +126,6 @@ router.post('/auth/send-code', async (req, res) => {
         console.error('发送验证码错误:', error);
         res.status(500).json({ message: error.message || '发送验证码失败' });
     }
-
-  } catch (error) {
-    console.error("发送验证码错误:", error);
-    res.status(500).json({ message: error.message || "发送验证码失败" });
-  }
 });
 
 // 用户注册
@@ -237,51 +229,7 @@ router.post('/auth/register', async (req, res) => {
     } catch (error) {
         console.error('注册错误:', error);
         res.status(500).json({ message: '注册失败' });
-
-
     }
-
-    // 验证验证码是否过期
-    const now = new Date();
-    const expireAt = new Date(user.verifyCode.expireAt);
-    if (now > expireAt) {
-      console.log("❌ [验证码验证] 验证码已过期:", {
-        currentTime: now.toISOString(),
-        expireTime: expireAt.toISOString(),
-        isExpired: now > expireAt,
-      });
-      return res.status(400).json({ message: "验证码已过期" });
-    }
-
-    console.log("✅ [验证码验证] 验证码验证成功!");
-
-    // 检查手机号是否已注册
-    if (user.password) {
-      return res.status(400).json({ message: "该手机号已注册" });
-    }
-
-    // 加密密码
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // 更新用户信息
-    await UserModel.findOneAndUpdate(
-      { phone },
-      {
-        password: hashedPassword,
-        verifyCode: null, // 清除验证码
-        status: "active",
-      }
-    );
-
-    res.json({
-      code: 200,
-      message: "注册成功",
-    });
-  } catch (error) {
-    console.error("注册错误:", error);
-    res.status(500).json({ message: "注册失败" });
-  }
 });
 
 // 用户登录
@@ -363,44 +311,44 @@ router.post("/auth/send-login-code", async (req, res) => {
       }
     }
 
-        // 调用短信服务发送验证码
-        const result = await smsService.sendSms(phone, verifyCode);
-        
-        if (result.success) {
+    // 生成4位验证码
+    const verifyCode = generateVerifyCode();
+    
+    // 设置验证码有效期（5分钟）
+    const expireAt = new Date(Date.now() + 5 * 60 * 1000);
 
-            // 保存验证码到数据库
-            const updateResult = await UserModel.findOneAndUpdate(
-                { phone },
-                { 
-                    verifyCode: {
-                        code: verifyCode,
-                        expireAt
+    // 调用短信服务发送验证码
+    const result = await smsService.sendSms(phone, verifyCode);
+    
+    if (result.success) {
+      // 保存验证码到数据库
+      const updateResult = await UserModel.findOneAndUpdate(
+        { phone },
+        { 
+          verifyCode: {
+            code: verifyCode,
+            expireAt
+          }
+        },
+        { new: true }
+      );
 
-                    }
-                },
-                { new: true }
-            );
+      console.log('✅ [短信登录验证码] 保存成功:', {
+        userId: updateResult._id,
+        phone: updateResult.phone,
+        savedVerifyCode: updateResult.verifyCode
+      });
 
-            console.log('✅ [短信登录验证码] 保存成功:', {
-                userId: updateResult._id,
-                phone: updateResult.phone,
-                savedVerifyCode: updateResult.verifyCode
-            });
-
-            res.json({ 
-                code: 200,
-                message: '验证码发送成功'
-            });
-        } else {
-            throw new Error(result.message || '短信发送失败');
-        }
-    } catch (error) {
-        console.error('发送短信登录验证码错误:', error);
-        res.status(500).json({ message: error.message || '发送验证码失败' });
+      res.json({ 
+        code: 200,
+        message: '验证码发送成功'
+      });
+    } else {
+      throw new Error(result.message || '短信发送失败');
     }
   } catch (error) {
-    console.error("发送短信登录验证码错误:", error);
-    res.status(500).json({ message: error.message || "发送验证码失败" });
+    console.error('发送短信登录验证码错误:', error);
+    res.status(500).json({ message: error.message || '发送验证码失败' });
   }
 });
 
@@ -620,56 +568,6 @@ router.get('/auth/github/callback', async (req, res) => {
         });
 
         if (user) {
-            // 用户已存在，更新第三方信息
-            console.log('✅ [水滴聚合登录] 找到已存在用户:', user._id);
-            
-            // 更新用户的第三方登录信息
-            await UserModel.findByIdAndUpdate(user._id, {
-                thirdPartyId: thirdPartyId,
-                thirdPartyPlatform: platform,
-                thirdPartyInfo: {
-                    openid,
-                    nickname,
-                    avatar,
-                    platform,
-                    lastLoginAt: new Date()
-                },
-                lastLoginAt: new Date()
-            });
-        } else {
-            // 创建新用户
-            console.log('📝 [水滴聚合登录] 创建新用户');
-            
-            user = new UserModel({
-                username: nickname || `${platform}_user_${Date.now()}`,
-                phone: phone || '',
-                email: email || '',
-                avatar: avatar || '',
-                thirdPartyId: thirdPartyId,
-                thirdPartyPlatform: platform,
-                thirdPartyInfo: {
-                    openid,
-                    nickname,
-                    avatar,
-                    platform,
-                    loginAt: new Date()
-                },
-                status: 'active',
-                createdAt: new Date(),
-                lastLoginAt: new Date()
-            });
-
-            await user.save();
-            console.log('✅ [水滴聚合登录] 新用户创建成功:', user._id);
-        }
-
-        // 生成 JWT token
-        const token = jwt.sign(
-            { 
-                userId: user._id, 
-                phone: user.phone,
-                platform: platform,
-                loginType: 'third_party'
             // 用户已存在，更新GitHub信息
             user.githubId = githubUser.id.toString();
             user.githubLogin = githubUser.login;
@@ -878,46 +776,7 @@ router.get('/auth/github/callback', async (req, res) => {
                 </body>
             </html>
         `);
-
     }
-
-    // 生成 JWT token
-    const token = jwt.sign(
-      {
-        userId: user._id,
-        phone: user.phone,
-        platform: platform,
-        loginType: "third_party",
-      },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    // 返回登录成功信息
-    res.json({
-      code: 200,
-      message: `${platform}登录成功`,
-      data: {
-        token,
-        userInfo: {
-          id: user._id,
-          username: user.username,
-          nickname: nickname,
-          avatar: avatar,
-          phone: user.phone,
-          email: user.email,
-          platform: platform,
-          loginType: "third_party",
-        },
-      },
-    });
-  } catch (error) {
-    console.error("水滴聚合登录错误:", error);
-    res.status(500).json({
-      code: 500,
-      message: "第三方登录失败",
-    });
-  }
 });
 
 // GitHub用户信息获取接口
@@ -964,19 +823,6 @@ router.get('/auth/github/user', async (req, res) => {
         }
         res.status(500).json({ message: '获取用户信息失败' });
     }
-
-    if (!code || !state) {
-      console.error("❌ [水滴聚合回调] 缺少必要参数");
-      return res.redirect("/pages/login/login?error=missing_params");
-    }
-
-    // 这里可以添加服务器端的回调处理逻辑
-    // 目前主要在前端处理，所以这里简单重定向
-    res.redirect(`/pages/login/login?code=${code}&state=${state}`);
-  } catch (error) {
-    console.error("水滴聚合回调处理错误:", error);
-    res.redirect("/pages/login/login?error=callback_error");
-  }
 });
 
-module.exports = router
+module.exports = router;

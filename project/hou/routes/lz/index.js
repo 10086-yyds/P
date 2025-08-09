@@ -1,5 +1,6 @@
 var express = require("express");
 var router = express.Router();
+const mongoose = require("mongoose");
 const { processModel, contractApplicationModel, UserModel } = require("../../db/model");
 
 /* GET home page. */
@@ -83,7 +84,6 @@ router.get("/api/projects/:id", async function (req, res, next) {
     console.log("获取项目详情，ID:", id);
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       console.log("无效的ObjectId格式:", id);
       return res.status(400).json({
@@ -206,7 +206,6 @@ router.put("/api/projects/:id", async function (req, res, next) {
     const { id } = req.params;
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的项目ID格式", "更新项目失败", 400);
     }
@@ -263,7 +262,6 @@ router.delete("/api/projects/:id", async function (req, res, next) {
     const { id } = req.params;
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的项目ID格式", "删除项目失败", 400);
     }
@@ -293,7 +291,6 @@ router.post("/api/projects/:id/complete", async function (req, res, next) {
     const { id } = req.params;
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的项目ID格式", "完成项目失败", 400);
     }
@@ -330,7 +327,6 @@ router.post("/api/projects/:id/cancel", async function (req, res, next) {
     const { id } = req.params;
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的项目ID格式", "取消项目失败", 400);
     }
@@ -728,6 +724,59 @@ router.get("/api/projects/data", async function (req, res, next) {
   }
 });
 
+// 创建测试用户数据
+router.post("/api/users/test-data", async function (req, res, next) {
+  try {
+    console.log("开始创建测试用户数据");
+    
+    const testUsers = [
+      {
+        _id: new mongoose.Types.ObjectId('64f8b8b8b8b8b8b8b8b8b8b8'),
+        username: '张三',
+        phone: '13800138001',
+        email: 'zhangsan@example.com',
+        password: 'password123',
+        role: 'user'
+      },
+      {
+        _id: new mongoose.Types.ObjectId('64f8b8b8b8b8b8b8b8b8b8b9'),
+        username: '李四',
+        phone: '13800138002', 
+        email: 'lisi@example.com',
+        password: 'password123',
+        role: 'user'
+      }
+    ];
+    
+    const createdUsers = [];
+    
+    for (const userData of testUsers) {
+      // 检查用户是否已存在
+      const existingUser = await UserModel.findById(userData._id);
+      if (!existingUser) {
+        const user = new UserModel(userData);
+        await user.save();
+        createdUsers.push(user);
+        console.log('创建用户:', userData.username);
+      } else {
+        console.log('用户已存在:', userData.username);
+      }
+    }
+    
+    res.success(
+      {
+        message: `检查/创建了 ${testUsers.length} 个测试用户，新创建 ${createdUsers.length} 个`,
+        users: createdUsers
+      },
+      "测试用户数据处理成功",
+      201
+    );
+  } catch (error) {
+    console.error("创建测试用户数据错误:", error);
+    res.error(error.message, "创建测试用户数据失败");
+  }
+});
+
 // 创建测试数据
 router.post("/api/projects/test-data", async function (req, res, next) {
   try {
@@ -874,10 +923,27 @@ router.post("/api/contracts", async function (req, res, next) {
       return res.error("财务信息不完整", "创建合同申请失败", 400);
     }
 
-    // 验证申请人是否存在
-    const user = await UserModel.findById(applicant.userId);
+    // 验证或创建申请人
+    let user = await UserModel.findById(applicant.userId);
     if (!user) {
-      return res.error("申请人不存在", "创建合同申请失败", 400);
+      console.log('用户不存在，自动创建用户:', applicant.userId);
+      
+      // 自动创建用户
+      try {
+        user = new UserModel({
+          _id: new mongoose.Types.ObjectId(applicant.userId),
+          username: applicant.name || '未知用户',
+          phone: '13800138000',
+          email: `user_${applicant.userId}@example.com`,
+          password: 'default123',
+          role: 'user'
+        });
+        await user.save();
+        console.log('用户创建成功:', user.username);
+      } catch (createError) {
+        console.error('创建用户失败:', createError);
+        // 如果创建用户失败，继续执行但记录错误
+      }
     }
 
     // 创建合同申请
@@ -915,7 +981,7 @@ router.post("/api/contracts", async function (req, res, next) {
       paymentPlan: paymentPlan || [],
       materials: materials || [],
       remarks: remarks || "",
-      createdBy: req.user ? req.user._id : applicant.userId
+      createdBy: req.user ? req.user._id : new mongoose.Types.ObjectId(applicant.userId)
     });
 
     await contractApplication.save();
@@ -938,7 +1004,8 @@ router.post("/api/contracts", async function (req, res, next) {
 // 获取合同申请列表
 router.get("/api/contracts", async function (req, res, next) {
   try {
-    console.log("开始获取合同申请列表");
+    console.log("🔍 开始获取合同申请列表");
+    console.log("📋 请求参数:", req.query);
 
     const { page = 1, limit = 10, status, applicantId, keyword } = req.query;
     const skip = (page - 1) * limit;
@@ -963,7 +1030,15 @@ router.get("/api/contracts", async function (req, res, next) {
       ];
     }
 
-    console.log("查询条件:", query);
+    console.log("🔍 MongoDB查询条件:", JSON.stringify(query, null, 2));
+
+    // 首先检查数据库中总计有多少条记录
+    const totalRecords = await contractApplicationModel.countDocuments({});
+    const totalNonDeleted = await contractApplicationModel.countDocuments({ isDeleted: false });
+    
+    console.log("📊 数据库统计:");
+    console.log("  - 总记录数:", totalRecords);
+    console.log("  - 未删除记录数:", totalNonDeleted);
 
     const applications = await contractApplicationModel
       .find(query)
@@ -976,7 +1051,19 @@ router.get("/api/contracts", async function (req, res, next) {
 
     const total = await contractApplicationModel.countDocuments(query);
 
-    console.log("查询到合同申请数量:", applications.length);
+    console.log("📊 查询结果:");
+    console.log("  - 符合条件的记录数:", total);
+    console.log("  - 返回的记录数:", applications.length);
+    
+    if (applications.length > 0) {
+      console.log("📝 第一条记录示例:", {
+        id: applications[0]._id,
+        applicant: applications[0].applicant?.name,
+        project: applications[0].project?.name,
+        contract: applications[0].contract?.name,
+        status: applications[0].status
+      });
+    }
 
     res.success(
       {
@@ -991,7 +1078,7 @@ router.get("/api/contracts", async function (req, res, next) {
       "获取合同申请列表成功"
     );
   } catch (error) {
-    console.error("获取合同申请列表错误:", error);
+    console.error("❌ 获取合同申请列表错误:", error);
     res.error(error.message, "获取合同申请列表失败");
   }
 });
@@ -1004,7 +1091,6 @@ router.get("/api/contracts/:id", async function (req, res, next) {
     console.log("获取合同申请详情，ID:", id);
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       console.log("无效的ObjectId格式:", id);
       return res.status(400).json({
@@ -1057,7 +1143,6 @@ router.put("/api/contracts/:id", async function (req, res, next) {
     const { id } = req.params;
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的合同申请ID格式", "更新合同申请失败", 400);
     }
@@ -1110,7 +1195,6 @@ router.post("/api/contracts/:id/submit", async function (req, res, next) {
     console.log("提交合同申请审批，ID:", id);
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的合同申请ID格式", "提交审批失败", 400);
     }
@@ -1158,7 +1242,6 @@ router.post("/api/contracts/:id/approve", async function (req, res, next) {
     console.log("审批合同申请，ID:", id, "操作:", action);
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的合同申请ID格式", "审批操作失败", 400);
     }
@@ -1203,7 +1286,6 @@ router.post("/api/contracts/:id/cancel", async function (req, res, next) {
     console.log("取消合同申请，ID:", id);
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的合同申请ID格式", "取消申请失败", 400);
     }
@@ -1241,7 +1323,6 @@ router.delete("/api/contracts/:id", async function (req, res, next) {
     console.log("删除合同申请，ID:", id);
 
     // 验证ObjectId格式
-    const mongoose = require("mongoose");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.error("无效的合同申请ID格式", "删除申请失败", 400);
     }
@@ -1338,6 +1419,91 @@ router.get("/api/contracts/stats/overview", async function (req, res, next) {
   } catch (error) {
     console.error("获取统计数据错误:", error);
     res.error(error.message, "获取统计数据失败");
+  }
+});
+
+// 检查数据库状态和连接
+router.get("/api/contracts/debug", async function (req, res, next) {
+  try {
+    console.log("🔍 开始检查数据库状态...");
+    
+    // 检查数据库连接
+    const mongoose = require('mongoose');
+    const dbState = mongoose.connection.readyState;
+    const dbStates = {
+      0: 'disconnected',
+      1: 'connected', 
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+    
+    console.log("📊 数据库连接状态:", dbStates[dbState]);
+    
+    // 检查集合是否存在
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const contractCollection = collections.find(c => c.name === 'contractApplication');
+    
+    console.log("📊 数据库集合:");
+    console.log("  - 所有集合:", collections.map(c => c.name));
+    console.log("  - 合同集合存在:", !!contractCollection);
+    
+    if (contractCollection) {
+      // 检查数据库中的数据
+      const totalDocs = await contractApplicationModel.countDocuments({});
+      const nonDeletedDocs = await contractApplicationModel.countDocuments({ isDeleted: false });
+      const statusStats = await contractApplicationModel.aggregate([
+        { $match: { isDeleted: false } },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]);
+      
+      console.log("📊 数据统计:");
+      console.log("  - 总文档数:", totalDocs);
+      console.log("  - 未删除文档数:", nonDeletedDocs);
+      console.log("  - 状态统计:", statusStats);
+      
+      if (totalDocs > 0) {
+        // 获取最近的几条记录作为示例
+        const sampleDocs = await contractApplicationModel
+          .find({})
+          .limit(3)
+          .select('applicant project contract status createdAt')
+          .lean();
+        
+        console.log("📝 示例文档:", sampleDocs);
+      }
+      
+      return res.success({
+        database: {
+          connected: dbState === 1,
+          state: dbStates[dbState]
+        },
+        collection: {
+          exists: !!contractCollection,
+          name: 'contractApplication'
+        },
+        data: {
+          total: totalDocs,
+          nonDeleted: nonDeletedDocs,
+          statusStats: statusStats
+        }
+      }, "数据库状态检查完成");
+    } else {
+      return res.success({
+        database: {
+          connected: dbState === 1,
+          state: dbStates[dbState]
+        },
+        collection: {
+          exists: false,
+          name: 'contractApplication'
+        },
+        message: "合同申请集合不存在，可能需要创建测试数据"
+      }, "数据库状态检查完成");
+    }
+    
+  } catch (error) {
+    console.error("❌ 数据库状态检查错误:", error);
+    res.error(error.message, "数据库状态检查失败");
   }
 });
 

@@ -153,31 +153,47 @@
           </view>
           <view class="form-item">
             <text class="form-label">签署日期</text>
-            <view class="date-input-group">
-              <input 
-                class="form-input date-input" 
-                v-model="newContract.signDate" 
-                placeholder="请输入签署日期 (YYYY-MM-DD)"
-                @focus="showSignDatePicker"
-              />
-              <view class="date-picker-btn" @click="showSignDatePicker">
-                <text class="picker-icon">📅</text>
+            <picker 
+              mode="date" 
+              :value="newContract.signDate" 
+              @change="onSignDateChange"
+              class="date-picker"
+              :disabled="false"
+            >
+              <view class="picker-input">
+                <input 
+                  class="form-input date-input" 
+                  :value="newContract.signDate || '请选择签署日期'" 
+                  placeholder="请选择签署日期"
+                  disabled
+                />
+                <view class="date-picker-btn">
+                  <text class="picker-icon">📅</text>
+                </view>
               </view>
-            </view>
+            </picker>
           </view>
           <view class="form-item">
             <text class="form-label">到期日期</text>
-            <view class="date-input-group">
-              <input 
-                class="form-input date-input" 
-                v-model="newContract.endDate" 
-                placeholder="请输入到期日期 (YYYY-MM-DD)"
-                @focus="showEndDatePicker"
-              />
-              <view class="date-picker-btn" @click="showEndDatePicker">
-                <text class="picker-icon">📅</text>
+            <picker 
+              mode="date" 
+              :value="newContract.endDate" 
+              @change="onEndDateChange"
+              class="date-picker"
+              :disabled="false"
+            >
+              <view class="picker-input">
+                <input 
+                  class="form-input date-input" 
+                  :value="newContract.endDate || '请选择到期日期'" 
+                  placeholder="请选择到期日期"
+                  disabled
+                />
+                <view class="date-picker-btn">
+                  <text class="picker-icon">📅</text>
+                </view>
               </view>
-            </view>
+            </picker>
           </view>
         </view>
         
@@ -195,6 +211,8 @@
 </template>
 
 <script>
+import { API_CONFIG } from '@/config/api.js';
+
 export default {
   data() {
     return {
@@ -203,6 +221,7 @@ export default {
       isRefreshing: false,
       showAddModal: false,
       contracts: [],
+      searchTimeout: null,
       newContract: {
         name: '',
         number: '',
@@ -253,26 +272,99 @@ export default {
       uni.navigateBack();
     },
     
+    // 获取token
+    getToken() {
+      return uni.getStorageSync('token') || '';
+    },
+
     // 加载合同数据
     async loadContractData() {
       try {
+        console.log('🔍 开始加载合同数据...');
+        
         uni.showLoading({
           title: '加载中...'
         });
         
-        // 模拟API调用
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 构建查询参数
+        const queryParams = new URLSearchParams();
+        if (this.searchKeyword) {
+          queryParams.append('keyword', this.searchKeyword);
+        }
+        if (this.currentFilter !== 'all') {
+          // 将前端状态映射为后端状态
+          const backendStatus = this.mapFrontendToBackendStatus(this.currentFilter);
+          if (backendStatus) {
+            queryParams.append('status', backendStatus);
+          }
+        }
         
-        // 这里应该调用真实的API
-        // const response = await uni.request({
-        //   url: '/api/contracts',
-        //   method: 'GET'
-        // });
+        const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+        console.log('📡 API请求URL:', apiUrl);
         
-        // 模拟数据
-        const mockData = [
+        // 调用真实的API
+        const result = await uni.request({
+          url: apiUrl,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          },
+          timeout: 10000
+        });
+        
+        console.log('📊 合同API响应:', result);
+        
+        if (result.statusCode === 200 && result.data) {
+          let contractsData = [];
+          
+          // 检查API返回的数据结构
+          if (result.data.success && result.data.data) {
+            // 后端返回的数据结构：{success: true, data: {applications: [...], pagination: {...}}}
+            if (result.data.data.applications) {
+              contractsData = result.data.data.applications;
+            } else if (Array.isArray(result.data.data)) {
+              contractsData = result.data.data;
+            }
+          } else if (Array.isArray(result.data)) {
+            contractsData = result.data;
+          }
+          
+          console.log('📊 解析后的合同数据:', contractsData);
+          
+          // 转换后端数据格式到前端格式
+          this.contracts = contractsData.map(contract => {
+            return {
+              id: contract._id || contract.id,
+              name: contract.contract?.name || contract.name || '未知合同',
+              number: contract.contract?.projectCode || contract.number || '无编号',
+              client: contract.contract?.partyB?.name || contract.client || '未知客户',
+              amount: contract.financial?.amountIncludingTax || contract.amount || 0,
+              signDate: contract.contract?.startDate ? 
+                new Date(contract.contract.startDate).toISOString().split('T')[0] : 
+                (contract.signDate || '未知'),
+              endDate: contract.contract?.endDate ? 
+                new Date(contract.contract.endDate).toISOString().split('T')[0] : 
+                (contract.endDate || '未知'),
+              status: this.mapBackendStatus(contract.status) || 'pending'
+            };
+          });
+          
+          console.log('✅ 合同数据转换完成:', this.contracts);
+        } else {
+          throw new Error(`API响应错误: ${result.statusCode}`);
+        }
+        
+        uni.hideLoading();
+      } catch (error) {
+        console.error('❌ 加载合同数据失败:', error);
+        uni.hideLoading();
+        
+        // 使用模拟数据作为降级方案
+        console.log('🔄 使用模拟数据...');
+        this.contracts = [
           {
-            id: 1,
+            id: 'mock-1',
             name: '软件开发服务合同',
             number: 'HT2024001',
             client: 'ABC科技有限公司',
@@ -282,7 +374,7 @@ export default {
             status: 'active'
           },
           {
-            id: 2,
+            id: 'mock-2',
             name: '系统维护合同',
             number: 'HT2024002',
             client: 'XYZ企业集团',
@@ -290,34 +382,45 @@ export default {
             signDate: '2024-02-01',
             endDate: '2024-11-30',
             status: 'pending'
-          },
-          {
-            id: 3,
-            name: '技术咨询合同',
-            number: 'HT2024003',
-            client: 'DEF咨询公司',
-            amount: 80000,
-            signDate: '2024-01-20',
-            endDate: '2024-06-30',
-            status: 'completed'
           }
         ];
         
-        this.contracts = mockData;
-        
-        uni.hideLoading();
-      } catch (error) {
-        console.error('加载合同数据失败:', error);
-        uni.hideLoading();
         uni.showToast({
-          title: '加载失败',
+          title: '使用模拟数据',
           icon: 'none'
         });
       }
     },
+
+    // 映射后端状态到前端状态
+    mapBackendStatus(backendStatus) {
+      const statusMap = {
+        '草稿': 'pending',
+        '待审批': 'pending',
+        '审批中': 'pending',
+        '已批准': 'active',
+        '已拒绝': 'completed',
+        '已取消': 'completed'
+      };
+      return statusMap[backendStatus] || 'pending';
+    },
+
+    // 映射前端状态到后端状态
+    mapFrontendToBackendStatus(frontendStatus) {
+      const statusMap = {
+        'pending': '待审批',
+        'active': '已批准', 
+        'completed': '已拒绝'
+      };
+      return statusMap[frontendStatus] || null;
+    },
     
+    // 处理搜索 - 使用防抖
     handleSearch() {
-      // 搜索逻辑已在computed中处理
+      clearTimeout(this.searchTimeout);
+      this.searchTimeout = setTimeout(() => {
+        this.loadContractData();
+      }, 500);
     },
     
     clearSearch() {
@@ -326,6 +429,7 @@ export default {
     
     setFilter(filter) {
       this.currentFilter = filter;
+      this.loadContractData(); // 改变筛选条件时重新加载数据
     },
     
     onRefresh() {
@@ -430,54 +534,30 @@ export default {
       };
     },
     
-    showSignDatePicker() {
-      // 使用系统日期选择器
-      uni.showModal({
-        title: '选择签署日期',
-        content: '请输入日期 (YYYY-MM-DD)',
-        editable: true,
-        placeholderText: '例如: 2024-01-20',
-        success: (res) => {
-          if (res.confirm && res.content) {
-            // 简单的日期格式验证
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (dateRegex.test(res.content)) {
-              console.log('选择签署日期:', res.content);
-              this.newContract.signDate = res.content;
-              this.$forceUpdate();
-            } else {
-              uni.showToast({
-                title: '日期格式错误',
-                icon: 'none'
-              });
-            }
-          }
-        }
-      });
+    // 签署日期选择器事件
+    onSignDateChange(e) {
+      console.log('选择签署日期:', e.detail.value);
+      this.newContract.signDate = e.detail.value;
+      this.resetPickerZIndex();
     },
     
-    showEndDatePicker() {
-      // 使用系统日期选择器
-      uni.showModal({
-        title: '选择到期日期',
-        content: '请输入日期 (YYYY-MM-DD)',
-        editable: true,
-        placeholderText: '例如: 2024-12-31',
-        success: (res) => {
-          if (res.confirm && res.content) {
-            // 简单的日期格式验证
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (dateRegex.test(res.content)) {
-              console.log('选择到期日期:', res.content);
-              this.newContract.endDate = res.content;
-              this.$forceUpdate();
-            } else {
-              uni.showToast({
-                title: '日期格式错误',
-                icon: 'none'
-              });
-            }
-          }
+    // 到期日期选择器事件
+    onEndDateChange(e) {
+      console.log('选择到期日期:', e.detail.value);
+      this.newContract.endDate = e.detail.value;
+      this.resetPickerZIndex();
+    },
+    
+    // 重置picker的z-index
+    resetPickerZIndex() {
+      this.$nextTick(() => {
+        // 确保picker弹出层在模态框之上
+        const modalOverlay = document.querySelector('.modal-overlay');
+        if (modalOverlay) {
+          modalOverlay.style.zIndex = '998';
+          setTimeout(() => {
+            modalOverlay.style.zIndex = '999';
+          }, 100);
         }
       });
     },
@@ -518,17 +598,112 @@ export default {
         return;
       }
       
+      // 检查日期字段（可选验证）
+      if (this.newContract.signDate && this.newContract.endDate) {
+        const signDate = new Date(this.newContract.signDate);
+        const endDate = new Date(this.newContract.endDate);
+        
+        if (signDate >= endDate) {
+          uni.showToast({
+            title: '到期日期必须晚于签署日期',
+            icon: 'none'
+          });
+          return;
+        }
+      }
+      
       try {
         uni.showLoading({
           title: '添加中...'
         });
         
-        // 模拟API调用
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 构造符合后端API要求的数据格式
+        const contractData = {
+          applicant: {
+            name: '当前用户', // 这里应该从用户信息获取
+            userId: '64f8b8b8b8b8b8b8b8b8b8b8' // 这里应该从用户信息获取
+          },
+          project: {
+            name: `${this.newContract.name}相关项目`,
+            description: `与合同${this.newContract.name}相关的项目`
+          },
+          contract: {
+            name: this.newContract.name.trim(),
+            type: '工程合同',
+            partyA: {
+              name: '本公司',
+              contact: ''
+            },
+            partyB: {
+              name: this.newContract.client.trim(),
+              contact: ''
+            },
+            startDate: this.newContract.signDate || new Date().toISOString().split('T')[0],
+            endDate: this.newContract.endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            paymentTerms: '按合同约定支付'
+          },
+          financial: {
+            amountIncludingTax: parseFloat(this.newContract.amount),
+            taxRate: 0,
+            taxAmount: 0,
+            amountExcludingTax: parseFloat(this.newContract.amount),
+            invoiceType: '增值税普通发票(蓝)'
+          },
+          remarks: '通过前端合同管理页面创建'
+        };
         
-        // 创建新合同对象
+        console.log('📤 发送合同数据:', contractData);
+        
+        // 调用真实的API
+        const result = await uni.request({
+          url: `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}`,
+          method: 'POST',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          },
+          data: contractData,
+          timeout: 10000
+        });
+        
+        console.log('📊 创建合同API响应:', result);
+        
+        console.log('📊 创建合同API完整响应:', {
+          statusCode: result.statusCode,
+          data: result.data,
+          success: result.data?.success
+        });
+        
+        if ((result.statusCode === 201 || result.statusCode === 200) && result.data && result.data.success) {
+          console.log('✅ 合同创建成功');
+          
+          // 重新加载数据
+          await this.loadContractData();
+          
+          // 关闭弹窗并重置表单
+          this.hideAddContract();
+          
+          uni.hideLoading();
+          uni.showToast({
+            title: '添加成功',
+            icon: 'success'
+          });
+        } else {
+          console.error('❌ API响应异常:', {
+            statusCode: result.statusCode,
+            success: result.data?.success,
+            message: result.data?.message
+          });
+          throw new Error(`API错误: ${result.data?.message || '创建失败'}`);
+        }
+        
+      } catch (error) {
+        console.error('❌ 添加合同失败:', error);
+        uni.hideLoading();
+        
+        // 降级方案：添加到本地列表
         const newContract = {
-          id: Date.now(),
+          id: 'local-' + Date.now(),
           name: this.newContract.name.trim(),
           number: this.newContract.number.trim(),
           client: this.newContract.client.trim(),
@@ -538,30 +713,11 @@ export default {
           status: 'pending'
         };
         
-        console.log('创建的新合同:', newContract);
-        
-        // 添加到列表开头
         this.contracts.unshift(newContract);
-        
-        // 强制更新视图
-        this.$forceUpdate();
-        
-        // 关闭弹窗并重置表单
         this.hideAddContract();
         
-        uni.hideLoading();
         uni.showToast({
-          title: '添加成功',
-          icon: 'success'
-        });
-        
-        console.log('合同添加成功，当前列表长度:', this.contracts.length);
-        
-      } catch (error) {
-        console.error('添加合同失败:', error);
-        uni.hideLoading();
-        uni.showToast({
-          title: '添加失败',
+          title: '已添加到本地',
           icon: 'none'
         });
       }
@@ -868,7 +1024,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 999;
 }
 
 .modal-content {
@@ -879,6 +1035,8 @@ export default {
   overflow: visible;
   max-height: 80vh;
   overflow-y: auto;
+  position: relative;
+  z-index: 1000;
 }
 
 .modal-header {
@@ -930,15 +1088,30 @@ export default {
   background: #f8f9fa;
 }
 
-.date-input-group {
+.date-picker {
+  width: 100%;
+  position: relative;
+  z-index: 1001;
+}
+
+.picker-input {
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
+  z-index: 1;
 }
 
 .date-input {
   flex: 1;
   padding-right: 80rpx;
+  color: #333 !important;
+  background: transparent !important;
+}
+
+.date-input[disabled] {
+  color: #333 !important;
+  opacity: 1 !important;
 }
 
 .date-picker-btn {
@@ -953,7 +1126,8 @@ export default {
   justify-content: center;
   background: #667eea;
   border-radius: 30rpx;
-  z-index: 1002;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .picker-icon {
@@ -990,5 +1164,50 @@ export default {
 
 .btn-text {
   font-size: 28rpx;
+}
+
+/* 修复picker在模态框中的z-index问题 */
+.modal-content :deep(.uni-picker-container) {
+  z-index: 10000 !important;
+}
+
+.modal-content :deep(.uni-picker) {
+  z-index: 10000 !important;
+}
+
+/* 微信小程序picker修复 */
+.modal-content :deep(.wx-picker-view) {
+  z-index: 10000 !important;
+}
+
+/* H5端picker修复 */
+.modal-content :deep(.uni-picker-system) {
+  z-index: 10000 !important;
+}
+
+/* 兼容旧版本语法 */
+.modal-content >>> .uni-picker-container,
+.modal-content /deep/ .uni-picker-container {
+  z-index: 10000 !important;
+}
+
+/* 全局picker修复 - 针对模态框场景 */
+page {
+  --picker-z-index: 10000;
+}
+
+/* 确保picker的遮罩层不会被模态框遮挡 */
+.uni-modal {
+  z-index: 9999 !important;
+}
+
+/* APP端picker修复 */
+.date-picker picker-view {
+  z-index: 10001 !important;
+}
+
+/* 小程序端特殊处理 */
+.modal-overlay.picker-active {
+  z-index: 998 !important;
 }
 </style>
