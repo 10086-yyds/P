@@ -5,10 +5,17 @@ var {UserModel, PermissionModel, MenuPermissionModel, MenuModel} = require('../.
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const smsService = require('../utils/smsService');
-const axios = require('axios');
 
 // JWT密钥
-const JWT_SECRET = "your-secret-key";
+const JWT_SECRET = 'your-secret-key';
+
+// 生成随机验证码
+function generateVerifyCode() {
+    // 生成4位随机验证码
+    return Math.floor(1000 + Math.random() * 9000).toString();
+
+const axios = require('axios');
+
 
 // GitHub OAuth配置
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23liRss5VUaecAUaNU';
@@ -86,6 +93,7 @@ router.post('/auth/send-code', async (req, res) => {
             });
 
             // 保存验证码到数据库
+
             // {{ AURA-X: Modify - 改为原子更新，避免替换整文档；upsert 时保证写入 phone。 }}
             const updateResult = await UserModel.findOneAndUpdate(
                 { phone },
@@ -98,6 +106,7 @@ router.post('/auth/send-code', async (req, res) => {
                     },
                     $setOnInsert: {
                         phone
+
                     }
                 },
                 { upsert: true, new: true }
@@ -120,6 +129,7 @@ router.post('/auth/send-code', async (req, res) => {
         console.error('发送验证码错误:', error);
         res.status(500).json({ message: error.message || '发送验证码失败' });
     }
+
   } catch (error) {
     console.error("发送验证码错误:", error);
     res.status(500).json({ message: error.message || "发送验证码失败" });
@@ -131,11 +141,12 @@ router.post('/auth/register', async (req, res) => {
     try {
         const { phone, password, verifyCode } = req.body;
 
+
         // {{ AURA-X: Add - 验证手机号不能为空且格式正确. }}
         if (!phone || !phone.trim()) {
             return res.status(400).json({ message: '手机号不能为空' });
         }
-        
+
         // 验证手机号格式
         if (!/^1[3-9]\d{9}$/.test(phone)) {
             return res.status(400).json({ message: '手机号格式不正确' });
@@ -203,6 +214,7 @@ router.post('/auth/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
+
         // 更新用户信息（原子更新，保留其他字段）
         // {{ AURA-X: Modify - 使用$set/$unset，避免替换整文档导致phone等字段丢失。 }}
         await UserModel.findOneAndUpdate(
@@ -225,6 +237,7 @@ router.post('/auth/register', async (req, res) => {
     } catch (error) {
         console.error('注册错误:', error);
         res.status(500).json({ message: '注册失败' });
+
 
     }
 
@@ -354,16 +367,15 @@ router.post("/auth/send-login-code", async (req, res) => {
         const result = await smsService.sendSms(phone, verifyCode);
         
         if (result.success) {
-            // 保存验证码到数据库（原子更新，防止替换文档）
-            // {{ AURA-X: Modify - 使用$set更新验证码字段。 }}
+
+            // 保存验证码到数据库
             const updateResult = await UserModel.findOneAndUpdate(
                 { phone },
-                {
-                    $set: {
-                        verifyCode: {
-                            code: verifyCode,
-                            expireAt
-                        }
+                { 
+                    verifyCode: {
+                        code: verifyCode,
+                        expireAt
+
                     }
                 },
                 { new: true }
@@ -608,6 +620,56 @@ router.get('/auth/github/callback', async (req, res) => {
         });
 
         if (user) {
+            // 用户已存在，更新第三方信息
+            console.log('✅ [水滴聚合登录] 找到已存在用户:', user._id);
+            
+            // 更新用户的第三方登录信息
+            await UserModel.findByIdAndUpdate(user._id, {
+                thirdPartyId: thirdPartyId,
+                thirdPartyPlatform: platform,
+                thirdPartyInfo: {
+                    openid,
+                    nickname,
+                    avatar,
+                    platform,
+                    lastLoginAt: new Date()
+                },
+                lastLoginAt: new Date()
+            });
+        } else {
+            // 创建新用户
+            console.log('📝 [水滴聚合登录] 创建新用户');
+            
+            user = new UserModel({
+                username: nickname || `${platform}_user_${Date.now()}`,
+                phone: phone || '',
+                email: email || '',
+                avatar: avatar || '',
+                thirdPartyId: thirdPartyId,
+                thirdPartyPlatform: platform,
+                thirdPartyInfo: {
+                    openid,
+                    nickname,
+                    avatar,
+                    platform,
+                    loginAt: new Date()
+                },
+                status: 'active',
+                createdAt: new Date(),
+                lastLoginAt: new Date()
+            });
+
+            await user.save();
+            console.log('✅ [水滴聚合登录] 新用户创建成功:', user._id);
+        }
+
+        // 生成 JWT token
+        const token = jwt.sign(
+            { 
+                userId: user._id, 
+                phone: user.phone,
+                platform: platform,
+                loginType: 'third_party'
             // 用户已存在，更新GitHub信息
             user.githubId = githubUser.id.toString();
             user.githubLogin = githubUser.login;
@@ -917,4 +979,4 @@ router.get('/auth/github/user', async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = router

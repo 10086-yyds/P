@@ -2,6 +2,24 @@
 const { mongoose } = require('./database');
 
 const userSchema = new mongoose.Schema({
+  // 密码强度等级
+  passwordStrength: {
+    type: String,
+    enum: ['weak', 'medium', 'strong'],
+    default: 'weak'
+  },
+
+  // 密码设置时间
+  passwordSetAt: {
+    type: Date,
+    default: Date.now
+  },
+
+  // （可选）是否已过期
+  passwordExpired: {
+    type: Boolean,
+    default: false
+  },
   username: {
     type: String,
     required: false,
@@ -56,38 +74,58 @@ const userSchema = new mongoose.Schema({
       default: null
     }
   },
-  // {{ AURA-X: Add - 添加GitHub OAuth登录相关字段. }}
-  // GitHub OAuth相关字段
-  githubId: {
-    type: String,
-    unique: true,
-    sparse: true // 允许null值，但如果有值必须唯一
-  },
-  githubLogin: {
-    type: String,
-    default: null
-  },
-  githubName: {
-    type: String,
-    default: null
-  },
-  loginType: {
-    type: String,
-    enum: ['phone', 'github', 'mixed'],
-    default: 'phone'
-  },
-  lastLoginAt: {
-    type: Date,
-    default: null
-  }
 
+  // {{ AURA-X: Add - 添加第三方登录字段支持水滴聚合登录. }}
+  //第三方登录信息
+  thirdPartyId: {
+    type: String,
+    default: null,
+    unique: false,
+    sparse: true
+  },
+  thirdPartyPlatform: {
+    type: String,
+    default: null
+  },
+  thirdPartyInfo: {
+    openid: {
+      type: String,
+      default: null
+    },
+    nickname: {
+      type: String,
+      default: null
+    },
+    avatar: {
+      type: String,
+      default: null
+    },
+    platform: {
+      type: String,
+      default: null
+    },
+    loginAt: {
+      type: Date,
+      default: null
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null
+    }
+  }
 });
+
+
+const userModel = mongoose.model("user", userSchema, "user");
+
+
 
 
 const UserModel = mongoose.model("user", userSchema, "user");
 
 const processSchema = new mongoose.Schema({
   // 项目名称
+
   name: {
     type: String,
     required: [true, '项目名称是必需的'],
@@ -249,6 +287,7 @@ const processSchema = new mongoose.Schema({
   }
 });
 
+
 // 流程模型索引
 processSchema.index({ projectCode: 1 });
 processSchema.index({ status: 1, isDeleted: 1 });
@@ -306,6 +345,7 @@ processSchema.statics.findByType = function(type) {
   });
 };
 
+
 const processModel = mongoose.model("process", processSchema, "process");
 
 const roleSchema = new mongoose.Schema({
@@ -334,6 +374,7 @@ const roleSchema = new mongoose.Schema({
 
 
 const roleModel = mongoose.model("role", roleSchema, "role");
+
 
 // 合同申请模型
 const contractApplicationSchema = new mongoose.Schema({
@@ -748,7 +789,6 @@ contractApplicationSchema.statics.findByDateRange = function(startDate, endDate)
 };
 
 const contractApplicationModel = mongoose.model("contractApplication", contractApplicationSchema, "contractApplication");
-
 module.exports = {
   UserModel,
   processModel,
