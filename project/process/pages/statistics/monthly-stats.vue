@@ -610,8 +610,24 @@ export default {
 		handleProjectClick(project) {
 			console.log('点击项目:', project);
 			
+			// 获取正确的项目ID，优先使用 _id 字段（后端实际返回的字段）
+			const projectId = project._id || project.id;
+			
+			if (!projectId) {
+				console.error('项目ID缺失:', project);
+				uni.showToast({
+					title: '项目ID缺失，无法跳转',
+					icon: 'error',
+					duration: 2000
+				});
+				return;
+			}
+			
+			console.log('项目ID:', projectId);
+			console.log('项目名称:', project.name);
+			
 			uni.navigateTo({
-				url: `/pages/project/project-detail?id=${project.id}&name=${encodeURIComponent(project.name)}`,
+				url: `/pages/project/project-detail?id=${projectId}&name=${encodeURIComponent(project.name)}`,
 				success: () => {
 					console.log('跳转到项目详情成功');
 				},

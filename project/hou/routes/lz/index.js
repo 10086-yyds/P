@@ -2,6 +2,373 @@ var express = require("express");
 var router = express.Router();
 const mongoose = require("mongoose");
 const { processModel, contractApplicationModel, UserModel } = require("../../db/model");
+const multiparty = require("multiparty");
+const path = require("path");
+const fs = require("fs");
+
+/**
+ * 图片管理说明：
+ * 1. 上传新图片：使用 POST /api/projects/:id/images
+ * 2. 更新项目时包含图片：PUT /api/projects/:id 中的 images 数组必须包含已上传的图片对象
+ * 3. 不允许在更新项目时直接发送 blob URLs 或文件对象
+ * 4. 图片对象结构：{ url: string, name: string, description: string, uploadedAt: Date, uploadedBy: ObjectId }
+ */
+
+// 确保上传目录存在
+const uploadDir = path.join(__dirname, "../../public/uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// 图片上传中间件
+const uploadImage = (req, res, next) => {
+  const form = new multiparty.Form({
+    uploadDir: uploadDir,
+    maxFilesSize: 10 * 1024 * 1024, // 10MB限制
+    autoFiles: true,
+    filter: function ({ name, originalFilename, mimetype }) {
+      // 只允许图片文件
+      return mimetype && mimetype.includes("image/");
+    }
+  });
+
+  form.parse(req, (err, fields, files) => {
+    if (err) {
+      return res.status(400).json({
+        success: false,
+        message: "文件上传失败",
+        error: err.message
+      });
+    }
+
+    req.uploadedFiles = files;
+    req.formFields = fields;
+    next();
+  });
+};
+
+// 图片上传接口
+router.post("/api/upload/image", uploadImage, async function (req, res, next) {
+  try {
+    console.log("开始处理图片上传请求");
+    
+    // 检查是否有上传的文件
+    if (!req.uploadedFiles || Object.keys(req.uploadedFiles).length === 0) {
+      return res.error("没有选择图片文件", "图片上传失败", 400);
+    }
+
+    const uploadedImages = [];
+    const errors = [];
+
+    // 处理每个上传的文件
+    for (const [fieldName, files] of Object.entries(req.uploadedFiles)) {
+      for (const file of files) {
+        try {
+          console.log("处理文件:", file.originalFilename);
+          
+          // 验证文件类型
+          if (!file.headers['content-type'] || !file.headers['content-type'].includes('image/')) {
+            errors.push(`${file.originalFilename}: 不是有效的图片文件`);
+            // 删除无效文件
+            if (fs.existsSync(file.path)) {
+              fs.unlinkSync(file.path);
+            }
+            continue;
+          }
+
+          // 生成唯一的文件名
+          const fileExt = path.extname(file.originalFilename);
+          const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}${fileExt}`;
+          const newFilePath = path.join(uploadDir, fileName);
+          
+          // 重命名文件
+          fs.renameSync(file.path, newFilePath);
+          
+          // 构建图片信息
+          const imageInfo = {
+            url: `/uploads/${fileName}`,
+            name: file.originalFilename || fileName,
+            description: req.formFields.description ? req.formFields.description[0] : '',
+            uploadedAt: new Date(),
+            uploadedBy: req.user ? req.user._id : null,
+            fileSize: file.size,
+            mimeType: file.headers['content-type']
+          };
+          
+          uploadedImages.push(imageInfo);
+          console.log("图片上传成功:", imageInfo.url);
+          
+        } catch (fileError) {
+          console.error("处理文件时出错:", fileError);
+          errors.push(`${file.originalFilename}: ${fileError.message}`);
+          // 清理文件
+          if (file.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+            } catch (cleanupError) {
+              console.error("清理文件失败:", cleanupError);
+            }
+          }
+        }
+      }
+    }
+
+    // 检查是否有成功上传的图片
+    if (uploadedImages.length === 0) {
+      return res.error("没有图片上传成功", "图片上传失败", 400);
+    }
+
+    // 返回上传结果
+    const result = {
+      success: true,
+      message: `成功上传 ${uploadedImages.length} 张图片`,
+      data: {
+        images: uploadedImages,
+        totalCount: uploadedImages.length,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    };
+
+    if (errors.length > 0) {
+      result.message += `，但有 ${errors.length} 个文件上传失败`;
+      console.warn("部分文件上传失败:", errors);
+    }
+
+    console.log("图片上传完成，成功:", uploadedImages.length, "失败:", errors.length);
+    res.json(result);
+
+  } catch (error) {
+    console.error("图片上传接口错误:", error);
+    
+    // 清理可能上传的文件
+    if (req.uploadedFiles) {
+      for (const files of Object.values(req.uploadedFiles)) {
+        for (const file of files) {
+          if (file.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+            } catch (cleanupError) {
+              console.error("清理文件失败:", cleanupError);
+            }
+          }
+        }
+      }
+    }
+    
+    res.error("图片上传失败", "服务器内部错误", 500);
+  }
+});
+
+// 批量图片上传接口
+router.post("/api/upload-images", uploadImage, async function (req, res, next) {
+  try {
+    console.log("开始处理批量图片上传请求");
+    
+    // 检查是否有上传的文件
+    if (!req.uploadedFiles || Object.keys(req.uploadedFiles).length === 0) {
+      return res.error("没有选择图片文件", "批量图片上传失败", 400);
+    }
+
+    const uploadedImages = [];
+    const errors = [];
+
+    // 处理每个上传的文件
+    for (const [fieldName, files] of Object.entries(req.uploadedFiles)) {
+      for (const file of files) {
+        try {
+          console.log("处理文件:", file.originalFilename);
+          
+          // 验证文件类型
+          if (!file.headers['content-type'] || !file.headers['content-type'].includes('image/')) {
+            errors.push(`${file.originalFilename}: 不是有效的图片文件`);
+            // 删除无效文件
+            if (fs.existsSync(file.path)) {
+              fs.unlinkSync(file.path);
+            }
+            continue;
+          }
+
+          // 生成唯一的文件名
+          const fileExt = path.extname(file.originalFilename);
+          const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}${fileExt}`;
+          const newFilePath = path.join(uploadDir, fileName);
+          
+          // 重命名文件
+          fs.renameSync(file.path, newFilePath);
+          
+          // 构建图片信息
+          const imageInfo = {
+            url: `/uploads/${fileName}`,
+            name: file.originalFilename || fileName,
+            description: req.formFields.description ? req.formFields.description[0] : '',
+            uploadedAt: new Date(),
+            uploadedBy: req.user ? req.user._id : null,
+            fileSize: file.size,
+            mimeType: file.headers['content-type']
+          };
+          
+          uploadedImages.push(imageInfo);
+          console.log("图片上传成功:", imageInfo.url);
+          
+        } catch (fileError) {
+          console.error("处理文件时出错:", fileError);
+          errors.push(`${file.originalFilename}: ${fileError.message}`);
+          // 清理文件
+          if (file.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+            } catch (cleanupError) {
+              console.error("清理文件失败:", cleanupError);
+            }
+          }
+        }
+      }
+    }
+
+    // 检查是否有成功上传的图片
+    if (uploadedImages.length === 0) {
+      return res.error("没有图片上传成功", "批量图片上传失败", 400);
+    }
+
+    // 返回上传结果
+    const result = {
+      success: true,
+      message: `成功上传 ${uploadedImages.length} 张图片`,
+      data: {
+        images: uploadedImages,
+        totalCount: uploadedImages.length,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    };
+
+    if (errors.length > 0) {
+      result.message += `，但有 ${errors.length} 个文件上传失败`;
+      console.warn("部分文件上传失败:", errors);
+    }
+
+    console.log("批量图片上传完成，成功:", uploadedImages.length, "失败:", errors.length);
+    res.json(result);
+
+  } catch (error) {
+    console.error("批量图片上传接口错误:", error);
+    
+    // 清理可能上传的文件
+    if (req.uploadedFiles) {
+      for (const files of Object.values(req.uploadedFiles)) {
+        for (const file of files) {
+          if (file.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+            } catch (cleanupError) {
+              console.error("清理文件失败:", cleanupError);
+            }
+          }
+        }
+      }
+    }
+    
+    res.error("批量图片上传失败", "服务器内部错误", 500);
+  }
+});
+
+// 删除图片文件接口
+router.delete("/api/images/:filename", async function (req, res, next) {
+  try {
+    const { filename } = req.params;
+    
+    // 安全检查：防止路径遍历攻击
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.error("无效的文件名", "删除图片失败", 400);
+    }
+    
+    const filePath = path.join(uploadDir, filename);
+    
+    // 检查文件是否存在
+    if (!fs.existsSync(filePath)) {
+      return res.error("图片文件不存在", "删除图片失败", 404);
+    }
+    
+    // 删除文件
+    fs.unlinkSync(filePath);
+    
+    console.log("图片文件删除成功:", filename);
+    res.success(null, "图片删除成功");
+    
+  } catch (error) {
+    console.error("删除图片文件错误:", error);
+    res.error("删除图片失败", "服务器内部错误", 500);
+  }
+});
+
+// 获取图片列表接口
+router.get("/api/images", async function (req, res, next) {
+  try {
+    const { page = 1, limit = 20, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // 读取上传目录
+    if (!fs.existsSync(uploadDir)) {
+      return res.success({ images: [], total: 0, page: parseInt(page), limit: parseInt(limit) }, "获取图片列表成功");
+    }
+    
+    const files = fs.readdirSync(uploadDir);
+    let imageFiles = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(ext);
+    });
+    
+    // 搜索过滤
+    if (search) {
+      imageFiles = imageFiles.filter(file => 
+        file.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+    
+    const total = imageFiles.length;
+    const paginatedFiles = imageFiles.slice(skip, skip + parseInt(limit));
+    
+    // 构建图片信息
+    const images = paginatedFiles.map(filename => {
+      const filePath = path.join(uploadDir, filename);
+      const stats = fs.statSync(filePath);
+      
+      return {
+        filename,
+        url: `/uploads/${filename}`,
+        name: filename,
+        size: stats.size,
+        uploadedAt: stats.mtime,
+        mimeType: getMimeType(filename)
+      };
+    });
+    
+    res.success({
+      images,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(total / parseInt(limit))
+    }, "获取图片列表成功");
+    
+  } catch (error) {
+    console.error("获取图片列表错误:", error);
+    res.error("获取图片列表失败", "服务器内部错误", 500);
+  }
+});
+
+// 辅助函数：根据文件扩展名获取MIME类型
+function getMimeType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.bmp': 'image/bmp',
+    '.webp': 'image/webp'
+  };
+  return mimeTypes[ext] || 'application/octet-stream';
+}
 
 /* GET home page. */
 router.get("/", function (req, res, next) {
@@ -181,7 +548,7 @@ router.post("/api/projects", async function (req, res, next) {
       priority: priority || 3,
       externalPartners: externalPartners || [],
       assignedTo,
-      createdBy: req.user ? req.user._id : "64f8b8b8b8b8b8b8b8b8b8b8", // 临时用户ID，实际应该从认证中间件获取
+      createdBy: req.user ? req.user._id : null, // 临时用户ID，实际应该从认证中间件获取
       status: "planning",
     });
 
@@ -203,6 +570,19 @@ router.post("/api/projects", async function (req, res, next) {
 // 更新项目
 router.put("/api/projects/:id", async function (req, res, next) {
   try {
+    // 检查数据库连接状态
+    const dbState = mongoose.connection.readyState;
+    console.log("数据库连接状态:", dbState, {
+      0: "已断开",
+      1: "已连接",
+      2: "正在连接",
+      3: "正在断开"
+    }[dbState]);
+    
+    if (dbState !== 1) {
+      return res.error("数据库连接异常", "更新项目失败", 503);
+    }
+    
     const { id } = req.params;
 
     // 验证ObjectId格式
@@ -215,13 +595,49 @@ router.put("/api/projects/:id", async function (req, res, next) {
       return res.error("请求体不能为空", "更新项目失败", 400);
     }
 
+    // 验证请求体是否为对象
+    if (typeof req.body !== 'object' || req.body === null) {
+      return res.error("请求体必须是有效的JSON对象", "更新项目失败", 400);
+    }
+
     const updateData = req.body;
+    
+    // 添加请求数据日志
+    console.log("更新项目请求数据:", {
+      projectId: id,
+      updateData: JSON.stringify(updateData, null, 2),
+      hasImages: updateData.images ? Array.isArray(updateData.images) : false,
+      imagesCount: updateData.images ? updateData.images.length : 0,
+      requestHeaders: req.headers,
+      contentType: req.get('Content-Type')
+    });
 
     // 查找项目
-    const project = await processModel.findOne({ _id: id, isDeleted: false });
+    console.log("开始查找项目...");
+    let project;
+    try {
+      project = await processModel.findOne({ _id: id, isDeleted: false });
+      console.log("项目查找完成");
+    } catch (findError) {
+      console.error("查找项目失败:", findError);
+      throw findError;
+    }
 
     if (!project) {
       return res.error("项目不存在", "更新项目失败", 404);
+    }
+    
+    console.log("找到项目:", {
+      id: project._id,
+      name: project.name,
+      status: project.status,
+      hasCreatedBy: !!project.createdBy,
+      hasAssignedTo: !!project.assignedTo
+    });
+    
+    // 验证项目数据的完整性
+    if (!project.createdBy) {
+      console.warn("警告: 项目缺少createdBy字段:", id);
     }
 
     // 如果要更新项目编号，检查是否重复
@@ -229,30 +645,217 @@ router.put("/api/projects/:id", async function (req, res, next) {
       updateData.projectCode &&
       updateData.projectCode !== project.projectCode
     ) {
-      const existingProject = await processModel.findOne({
-        projectCode: updateData.projectCode,
-        isDeleted: false,
-        _id: { $ne: id },
-      });
+      console.log("检查项目编号是否重复:", updateData.projectCode);
+      let existingProject;
+      try {
+        existingProject = await processModel.findOne({
+          projectCode: updateData.projectCode,
+          isDeleted: false,
+          _id: { $ne: id },
+        });
+        console.log("项目编号重复检查完成");
+      } catch (checkError) {
+        console.error("检查项目编号重复失败:", checkError);
+        throw checkError;
+      }
 
       if (existingProject) {
         return res.error("项目编号已存在", "更新项目失败", 400);
       }
     }
 
-    // 更新项目
-    updateData.updatedBy = req.user ? req.user._id : "64f8b8b8b8b8b8b8b8b8b8b8";
-    updateData.updatedAt = new Date();
+    // 处理图片数据 - 验证图片数组结构
+    if (updateData.images !== undefined) {
+      console.log("开始验证图片数据...");
+      if (!Array.isArray(updateData.images)) {
+        return res.error("图片数据必须是数组格式", "更新项目失败", 400);
+      }
+      
+      console.log(`验证${updateData.images.length}张图片...`);
+      
+      // 验证每个图片对象的结构
+      for (let i = 0; i < updateData.images.length; i++) {
+        const image = updateData.images[i];
+        console.log(`验证第${i + 1}张图片:`, image);
+        
+        // 检查是否为对象
+        if (typeof image !== 'object' || image === null) {
+          return res.error(`图片数据第${i + 1}项必须是对象格式`, "更新项目失败", 400);
+        }
+        
+        // 检查必要字段
+        if (!image.url || typeof image.url !== 'string') {
+          return res.error(`图片数据第${i + 1}项缺少有效的url字段`, "更新项目失败", 400);
+        }
+        
+        // 检查是否为blob URL（不允许）
+        if (image.url.startsWith('blob:')) {
+          return res.error(`图片数据第${i + 1}项包含无效的blob URL，请先上传图片`, "更新项目失败", 400);
+        }
+        
+        // 检查URL格式（应该是服务器端路径）
+        if (!image.url.startsWith('/uploads/') && !image.url.startsWith('http')) {
+          return res.error(`图片数据第${i + 1}项的URL格式无效`, "更新项目失败", 400);
+        }
+        
+        // 确保图片有必要的字段
+        if (!image.uploadedAt) {
+          image.uploadedAt = new Date();
+        }
+        if (!image.uploadedBy) {
+          // 如果没有用户信息，使用null而不是无效的ObjectId
+          image.uploadedBy = req.user ? req.user._id : null;
+        }
+        
+        // 验证uploadedBy字段（如果存在）
+        if (image.uploadedBy && !mongoose.Types.ObjectId.isValid(image.uploadedBy)) {
+          return res.error(`图片数据第${i + 1}项的uploadedBy字段必须是有效的ObjectId`, "更新项目失败", 400);
+        }
+        
+        // 验证其他字段类型
+        if (image.name && typeof image.name !== 'string') {
+          return res.error(`图片数据第${i + 1}项的name字段必须是字符串`, "更新项目失败", 400);
+        }
+        if (image.description && typeof image.description !== 'string') {
+          return res.error(`图片数据第${i + 1}项的description字段必须是字符串`, "更新项目失败", 400);
+        }
+        
+        console.log(`第${i + 1}张图片验证通过`);
+      }
+      
+      console.log("所有图片验证通过");
+    }
 
-    const updatedProject = await processModel
-      .findByIdAndUpdate(id, updateData, { new: true })
-      .populate("createdBy", "username phone")
-      .populate("assignedTo", "username phone")
-      .populate("updatedBy", "username phone");
+    // 更新项目
+    updateData.updatedBy = req.user ? req.user._id : null;
+    updateData.updatedAt = new Date();
+    
+    // 验证updatedBy字段（如果存在）
+    if (updateData.updatedBy && !mongoose.Types.ObjectId.isValid(updateData.updatedBy)) {
+      return res.error("updatedBy字段必须是有效的ObjectId", "更新项目失败", 400);
+    }
+
+    // 验证项目数据的完整性
+    console.log("验证项目数据完整性...");
+    if (updateData.name && typeof updateData.name !== 'string') {
+      return res.error("项目名称必须是字符串", "更新项目失败", 400);
+    }
+    if (updateData.description && typeof updateData.description !== 'string') {
+      return res.error("项目描述必须是字符串", "更新项目失败", 400);
+    }
+    if (updateData.progress !== undefined && (typeof updateData.progress !== 'number' || updateData.progress < 0 || updateData.progress > 100)) {
+      return res.error("项目进度必须是0-100之间的数字", "更新项目失败", 400);
+    }
+    if (updateData.priority !== undefined && ![1, 2, 3, 4, 5].includes(updateData.priority)) {
+      return res.error("项目优先级必须是1-5之间的数字", "更新项目失败", 400);
+    }
+    if (updateData.status !== undefined && !['planning', 'active', 'on-hold', 'completed', 'cancelled'].includes(updateData.status)) {
+      return res.error("项目状态值无效", "更新项目失败", 400);
+    }
+    console.log("项目数据验证通过");
+
+    // 添加运行验证选项
+    console.log("开始执行数据库更新操作...");
+    console.log("更新数据:", JSON.stringify(updateData, null, 2));
+    
+    let updatedProject;
+    try {
+      updatedProject = await processModel
+        .findByIdAndUpdate(id, updateData, { 
+          new: true, 
+          runValidators: true,
+          context: 'query'
+        });
+      console.log("数据库更新操作完成");
+    } catch (dbError) {
+      console.error("数据库更新操作失败:", dbError);
+      throw dbError;
+    }
+
+    if (!updatedProject) {
+      return res.error("项目更新失败，未找到更新后的项目", "更新项目失败", 500);
+    }
+
+    // 尝试填充关联字段，如果失败则继续
+    console.log("开始填充关联字段...");
+    try {
+      if (updatedProject.createdBy) {
+        await updatedProject.populate("createdBy", "username phone");
+        console.log("createdBy字段填充成功");
+      }
+      if (updatedProject.assignedTo) {
+        await updatedProject.populate("assignedTo", "username phone");
+        console.log("assignedTo字段填充成功");
+      }
+      if (updatedProject.updatedBy) {
+        await updatedProject.populate("updatedBy", "username phone");
+        console.log("updatedBy字段填充成功");
+      }
+      console.log("所有关联字段填充完成");
+    } catch (populateError) {
+      console.warn("填充关联字段失败，但项目更新成功:", populateError.message);
+      console.warn("错误详情:", populateError);
+    }
+
+    console.log("项目更新成功，项目ID:", id, "更新字段:", Object.keys(updateData));
+    console.log("更新后的项目数据:", {
+      id: updatedProject._id,
+      name: updatedProject.name,
+      progress: updatedProject.progress,
+      imagesCount: updatedProject.images ? updatedProject.images.length : 0,
+      updatedAt: updatedProject.updatedAt
+    });
 
     res.success(updatedProject, "更新项目成功");
   } catch (error) {
-    res.error(error.message, "更新项目失败");
+    console.error("更新项目错误:", error);
+    console.error("错误详情:", {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    
+    // 如果是验证错误，返回更详细的错误信息
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.error(`数据验证失败: ${validationErrors.join(', ')}`, "更新项目失败", 400);
+    }
+    
+    // 如果是类型转换错误，返回更详细的错误信息
+    if (error.name === 'CastError') {
+      return res.error(`数据类型错误: ${error.message}`, "更新项目失败", 400);
+    }
+    
+    // 如果是数据库连接错误
+    if (error.name === 'MongoNetworkError' || error.name === 'MongoServerSelectionError') {
+      return res.error("数据库连接错误，请稍后重试", "更新项目失败", 503);
+    }
+    
+    // 如果是数据库操作超时
+    if (error.name === 'MongoTimeoutError') {
+      return res.error("数据库操作超时，请稍后重试", "更新项目失败", 503);
+    }
+    
+    // 如果是其他数据库错误
+    if (error.code) {
+      console.error("数据库错误代码:", error.code);
+    }
+    
+    // 添加通用错误处理，确保总是返回响应
+    try {
+      res.error(error.message || "未知错误", "更新项目失败");
+    } catch (responseError) {
+      console.error("发送错误响应失败:", responseError);
+      // 如果连错误响应都发送失败，尝试发送基本的HTTP状态
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: "更新项目失败",
+          error: error.message || "未知错误"
+        });
+      }
+    }
   }
 });
 
@@ -275,7 +878,7 @@ router.delete("/api/projects/:id", async function (req, res, next) {
     // 软删除
     await processModel.findByIdAndUpdate(id, {
       isDeleted: true,
-      deletedBy: req.user ? req.user._id : "64f8b8b8b8b8b8b8b8b8b8b8",
+      deletedBy: req.user ? req.user._id : null,
       deletedAt: new Date(),
     });
 
@@ -306,7 +909,7 @@ router.post("/api/projects/:id/complete", async function (req, res, next) {
     }
 
     await project.complete(
-      req.user ? req.user._id : "64f8b8b8b8b8b8b8b8b8b8b8"
+              req.user ? req.user._id : null
     );
 
     const updatedProject = await processModel
@@ -341,7 +944,7 @@ router.post("/api/projects/:id/cancel", async function (req, res, next) {
       return res.error("项目已取消", "取消项目失败", 400);
     }
 
-    await project.cancel(req.user ? req.user._id : "64f8b8b8b8b8b8b8b8b8b8b8");
+            await project.cancel(req.user ? req.user._id : null);
 
     const updatedProject = await processModel
       .findById(id)
@@ -731,7 +1334,7 @@ router.post("/api/users/test-data", async function (req, res, next) {
     
     const testUsers = [
       {
-        _id: new mongoose.Types.ObjectId('64f8b8b8b8b8b8b8b8b8b8b8'),
+        _id: null,
         username: '张三',
         phone: '13800138001',
         email: 'zhangsan@example.com',
@@ -739,7 +1342,7 @@ router.post("/api/users/test-data", async function (req, res, next) {
         role: 'user'
       },
       {
-        _id: new mongoose.Types.ObjectId('64f8b8b8b8b8b8b8b8b8b8b9'),
+        _id: null,
         username: '李四',
         phone: '13800138002', 
         email: 'lisi@example.com',
@@ -863,7 +1466,7 @@ router.post("/api/projects/test-data", async function (req, res, next) {
     for (const projectData of testProjects) {
       const project = new processModel({
         ...projectData,
-        createdBy: "64f8b8b8b8b8b8b8b8b8b8b8",
+        createdBy: null,
         createdAt: new Date(
           Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
         ), // 随机创建时间
@@ -931,7 +1534,7 @@ router.post("/api/contracts", async function (req, res, next) {
       // 自动创建用户
       try {
         user = new UserModel({
-          _id: new mongoose.Types.ObjectId(applicant.userId),
+          _id: null,
           username: applicant.name || '未知用户',
           phone: '13800138000',
           email: `user_${applicant.userId}@example.com`,
@@ -981,7 +1584,7 @@ router.post("/api/contracts", async function (req, res, next) {
       paymentPlan: paymentPlan || [],
       materials: materials || [],
       remarks: remarks || "",
-      createdBy: req.user ? req.user._id : new mongoose.Types.ObjectId(applicant.userId)
+      createdBy: req.user ? req.user._id : null
     });
 
     await contractApplication.save();
@@ -1517,7 +2120,7 @@ router.post("/api/contracts/test-data", async function (req, res, next) {
       {
         applicant: {
           name: "李想",
-          userId: "64f8b8b8b8b8b8b8b8b8b8b8"
+          userId: null
         },
         project: {
           name: "某兰公园一区改造工程",
@@ -1583,7 +2186,7 @@ router.post("/api/contracts/test-data", async function (req, res, next) {
       {
         applicant: {
           name: "张三",
-          userId: "64f8b8b8b8b8b8b8b8b8b8b8"
+          userId: null
         },
         project: {
           name: "办公楼装修项目",
@@ -1645,9 +2248,9 @@ router.post("/api/contracts/test-data", async function (req, res, next) {
     for (const contractData of testContracts) {
       const contract = new contractApplicationModel({
         ...contractData,
-        createdBy: "64f8b8b8b8b8b8b8b8b8b8b8",
+        createdBy: null,
         createdAt: new Date(
-          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+          Date.now() - Math.random() * 60 * 60 * 1000
         ), // 随机创建时间
       });
 
@@ -1667,6 +2270,271 @@ router.post("/api/contracts/test-data", async function (req, res, next) {
   } catch (error) {
     console.error("创建测试合同申请数据错误:", error);
     res.error(error.message, "创建测试合同申请数据失败");
+  }
+});
+
+// ==================== 图片上传和管理相关接口 ====================
+
+// 上传项目图片
+router.post("/api/projects/:id/images", uploadImage, async function (req, res, next) {
+  try {
+    const { id } = req.params;
+    
+    // 验证ObjectId格式
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的项目ID格式", "上传图片失败", 400);
+    }
+
+    // 查找项目
+    const project = await processModel.findOne({ _id: id, isDeleted: false });
+    if (!project) {
+      return res.error("项目不存在", "上传图片失败", 404);
+    }
+
+    if (!req.uploadedFiles || !req.uploadedFiles.image) {
+      return res.error("没有上传图片文件", "上传图片失败", 400);
+    }
+
+    const uploadedImages = [];
+    const imageFiles = Array.isArray(req.uploadedFiles.image) ? req.uploadedFiles.image : [req.uploadedFiles.image];
+
+    for (const file of imageFiles) {
+      if (file && file.path) {
+        // 生成访问URL
+        const fileName = path.basename(file.path);
+        const imageUrl = `/uploads/${fileName}`;
+        
+        // 创建图片记录
+        const imageData = {
+          url: imageUrl,
+          name: file.originalFilename || fileName,
+          description: req.formFields.description ? req.formFields.description[0] : "",
+          uploadedAt: new Date(),
+          uploadedBy: req.user ? req.user._id : null
+        };
+
+        uploadedImages.push(imageData);
+      }
+    }
+
+    if (uploadedImages.length === 0) {
+      return res.error("没有有效的图片文件", "上传图片失败", 400);
+    }
+
+    // 更新项目的图片数组
+    const updatedProject = await processModel
+      .findByIdAndUpdate(
+        id,
+        { 
+          $push: { images: { $each: uploadedImages } },
+          updatedAt: new Date(),
+          updatedBy: req.user ? req.user._id : null
+        },
+        { new: true }
+      )
+      .populate("createdBy", "username phone")
+      .populate("assignedTo", "username phone")
+      .populate("updatedBy", "username phone");
+
+    console.log("项目图片上传成功，项目ID:", id, "上传图片数量:", uploadedImages.length);
+
+    res.success({
+      project: updatedProject,
+      uploadedImages: uploadedImages
+    }, "图片上传成功");
+
+  } catch (error) {
+    console.error("上传项目图片错误:", error);
+    res.error(error.message, "上传图片失败");
+  }
+});
+
+// 删除项目图片
+router.delete("/api/projects/:id/images/:imageId", async function (req, res, next) {
+  try {
+    const { id, imageId } = req.params;
+    
+    // 验证ObjectId格式
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的项目ID格式", "删除图片失败", 400);
+    }
+
+    // 查找项目
+    const project = await processModel.findOne({ _id: id, isDeleted: false });
+    if (!project) {
+      return res.error("项目不存在", "删除图片失败", 404);
+    }
+
+    // 查找要删除的图片
+    const imageIndex = project.images.findIndex(img => img._id.toString() === imageId);
+    if (imageIndex === -1) {
+      return res.error("图片不存在", "删除图片失败", 404);
+    }
+
+    const imageToDelete = project.images[imageIndex];
+    
+    // 删除物理文件
+    if (imageToDelete.url && imageToDelete.url.startsWith('/uploads/')) {
+      const filePath = path.join(__dirname, "../../public", imageToDelete.url);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log("删除物理文件:", filePath);
+      }
+    }
+
+    // 从数组中移除图片
+    project.images.splice(imageIndex, 1);
+    project.updatedAt = new Date();
+    project.updatedBy = req.user ? req.user._id : null;
+    
+    await project.save();
+
+    const updatedProject = await processModel
+      .findById(id)
+      .populate("createdBy", "username phone")
+      .populate("assignedTo", "username phone")
+      .populate("updatedBy", "username phone");
+
+    console.log("项目图片删除成功，项目ID:", id, "图片ID:", imageId);
+
+    res.success(updatedProject, "图片删除成功");
+
+  } catch (error) {
+    console.error("删除项目图片错误:", error);
+    res.error(error.message, "删除图片失败");
+  }
+});
+
+// 更新项目图片信息
+router.put("/api/projects/:id/images/:imageId", async function (req, res, next) {
+  try {
+    const { id, imageId } = req.params;
+    const { name, description } = req.body;
+    
+    // 验证ObjectId格式
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的项目ID格式", "更新图片信息失败", 400);
+    }
+
+    // 查找项目
+    const project = await processModel.findOne({ _id: id, isDeleted: false });
+    if (!project) {
+      return res.error("项目不存在", "更新图片信息失败", 404);
+    }
+
+    // 查找要更新的图片
+    const image = project.images.id(imageId);
+    if (!image) {
+      return res.error("图片不存在", "更新图片信息失败", 404);
+    }
+
+    // 更新图片信息
+    if (name !== undefined) image.name = name;
+    if (description !== undefined) image.description = description;
+    
+    project.updatedAt = new Date();
+    project.updatedBy = req.user ? req.user._id : null;
+    
+    await project.save();
+
+    const updatedProject = await processModel
+      .findById(id)
+      .populate("createdBy", "username phone")
+      .populate("assignedTo", "username phone")
+      .populate("updatedBy", "username phone");
+
+    console.log("项目图片信息更新成功，项目ID:", id, "图片ID:", imageId);
+
+    res.success(updatedProject, "图片信息更新成功");
+
+  } catch (error) {
+    console.error("更新项目图片信息错误:", error);
+    res.error(error.message, "更新图片信息失败");
+  }
+});
+
+// 获取项目图片列表
+router.get("/api/projects/:id/images", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+    
+    // 验证ObjectId格式
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的项目ID格式", "获取图片列表失败", 400);
+    }
+
+    // 查找项目
+    const project = await processModel.findOne({ _id: id, isDeleted: false })
+      .select("images")
+      .populate("images.uploadedBy", "username");
+
+    if (!project) {
+      return res.error("项目不存在", "获取图片列表失败", 404);
+    }
+
+    console.log("获取项目图片列表成功，项目ID:", id, "图片数量:", project.images.length);
+
+    res.success({
+      projectId: id,
+      images: project.images || []
+    }, "获取图片列表成功");
+
+  } catch (error) {
+    console.error("获取项目图片列表错误:", error);
+    res.error(error.message, "获取图片列表失败");
+  }
+});
+
+// 批量更新项目图片顺序
+router.put("/api/projects/:id/images/reorder", async function (req, res, next) {
+  try {
+    const { id } = req.params;
+    const { imageIds } = req.body; // 新的图片ID顺序数组
+    
+    if (!Array.isArray(imageIds)) {
+      return res.error("图片ID数组格式错误", "更新图片顺序失败", 400);
+    }
+
+    // 验证ObjectId格式
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.error("无效的项目ID格式", "更新图片顺序失败", 400);
+    }
+
+    // 查找项目
+    const project = await processModel.findOne({ _id: id, isDeleted: false });
+    if (!project) {
+      return res.error("项目不存在", "更新图片顺序失败", 404);
+    }
+
+    // 重新排序图片数组
+    const reorderedImages = [];
+    for (const imageId of imageIds) {
+      const image = project.images.find(img => img._id.toString() === imageId);
+      if (image) {
+        reorderedImages.push(image);
+      }
+    }
+
+    // 更新项目
+    project.images = reorderedImages;
+    project.updatedAt = new Date();
+    project.updatedBy = req.user ? req.user._id : null;
+    
+    await project.save();
+
+    const updatedProject = await processModel
+      .findById(id)
+      .populate("createdBy", "username phone")
+      .populate("assignedTo", "username phone")
+      .populate("updatedBy", "username phone");
+
+    console.log("项目图片顺序更新成功，项目ID:", id);
+
+    res.success(updatedProject, "图片顺序更新成功");
+
+  } catch (error) {
+    console.error("更新项目图片顺序错误:", error);
+    res.error(error.message, "更新图片顺序失败");
   }
 });
 

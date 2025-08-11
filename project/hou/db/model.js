@@ -798,6 +798,7 @@ contractApplicationSchema.statics.findByDateRange = function(startDate, endDate)
 
 const contractApplicationModel = mongoose.model("contractApplication", contractApplicationSchema, "contractApplication");
 module.exports = {
+  userModel,
   UserModel,
   processModel,
   roleModel,
