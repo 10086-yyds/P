@@ -75,8 +75,8 @@
         <view class="contract-header">
           <view class="contract-title">
             <text class="title">{{ contract.name }}</text>
-            <view class="status-badge" :class="contract.status">
-              <text class="status-text">{{ getStatusText(contract.status) }}</text>
+            <view class="status-badge" :class="contract.originalStatus === '草稿' ? 'draft' : contract.status">
+              <text class="status-text">{{ getDetailedStatusText(contract) }}</text>
             </view>
           </view>
           <view class="contract-number">
@@ -109,8 +109,12 @@
           <view class="action-btn view" @click.stop="viewContract(contract)">
             <text class="action-text">查看</text>
           </view>
-          <view class="action-btn edit" @click.stop="editContract(contract)">
+          <view class="action-btn edit" @click.stop="editContract(contract)" v-if="contract.status === 'pending'">
             <text class="action-text">编辑</text>
+          </view>
+          <!-- 只有草稿状态的合同才显示提交审批按钮 -->
+          <view class="action-btn submit" @click.stop="submitForApproval(contract)" v-if="isDraftStatus(contract)">
+            <text class="action-text">提交审批</text>
           </view>
           <view class="action-btn download" @click.stop="downloadContract(contract)">
             <text class="action-text">下载</text>
@@ -346,7 +350,8 @@ export default {
               endDate: contract.contract?.endDate ? 
                 new Date(contract.contract.endDate).toISOString().split('T')[0] : 
                 (contract.endDate || '未知'),
-              status: this.mapBackendStatus(contract.status) || 'pending'
+              status: this.mapBackendStatus(contract.status) || 'pending',
+              originalStatus: contract.status || '草稿' // 保存原始状态，用于判断是否需要显示提交审批按钮
             };
           });
           
@@ -466,6 +471,22 @@ export default {
       };
       return statusMap[status] || '未知';
     },
+
+    // 根据原始状态显示更准确的状态文本
+    getDetailedStatusText(contract) {
+      if (contract.originalStatus === '草稿') {
+        return '草稿';
+      } else if (contract.originalStatus === '待审批') {
+        return '待审批';
+      } else if (contract.originalStatus === '审批中') {
+        return '审批中';
+      } else if (contract.originalStatus === '已批准') {
+        return '已批准';
+      } else if (contract.originalStatus === '已拒绝') {
+        return '已拒绝';
+      }
+      return this.getStatusText(contract.status);
+    },
     
     formatAmount(amount) {
       return amount.toLocaleString();
@@ -510,6 +531,96 @@ export default {
         title: '下载合同文件',
         icon: 'none'
       });
+    },
+
+    // 判断是否为草稿状态（需要显示提交审批按钮）
+    isDraftStatus(contract) {
+      // 检查原始状态，如果是草稿则显示提交审批按钮
+      return contract.originalStatus === '草稿' || 
+             (contract.status === 'pending' && contract.originalStatus !== '待审批');
+    },
+
+    // 提交审批
+    async submitForApproval(contract) {
+      try {
+        console.log('提交合同审批:', contract);
+        
+        uni.showModal({
+          title: '确认提交',
+          content: `确定要将合同"${contract.name}"提交审批吗？`,
+          success: async (res) => {
+            if (res.confirm) {
+              try {
+                uni.showLoading({
+                  title: '提交中...'
+                });
+
+                // 调用后端API提交审批
+                const result = await uni.request({
+                  url: `${API_CONFIG.BASE_URL}${API_CONFIG.CONTRACT_API}/${contract.id}/submit`,
+                  method: 'POST',
+                  header: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.getToken()}`
+                  },
+                  data: {
+                    approvers: [
+                      // 这里可以添加审批人信息，目前使用默认审批流程
+                    ]
+                  },
+                  timeout: 10000
+                });
+
+                console.log('提交审批响应:', result);
+
+                if ((result.statusCode === 200 || result.statusCode === 201) && result.data && result.data.success) {
+                  console.log('✅ 提交审批成功');
+                  
+                  uni.hideLoading();
+                  uni.showToast({
+                    title: '提交成功',
+                    icon: 'success'
+                  });
+
+                  // 刷新数据
+                  await this.loadContractData();
+                  
+                  // 可选：跳转到审批页面
+                  setTimeout(() => {
+                    uni.showModal({
+                      title: '提示',
+                      content: '合同已提交审批，是否前往审批页面查看？',
+                      success: (modalRes) => {
+                        if (modalRes.confirm) {
+                          uni.navigateTo({
+                            url: '/pages/approval/approval'
+                          });
+                        }
+                      }
+                    });
+                  }, 1000);
+
+                } else {
+                  throw new Error(`提交失败: ${result.data?.message || '未知错误'}`);
+                }
+
+              } catch (error) {
+                uni.hideLoading();
+                console.error('❌ 提交审批失败:', error);
+                
+                uni.showModal({
+                  title: '提交失败',
+                  content: error.message || '网络错误，请重试',
+                  showCancel: false
+                });
+              }
+            }
+          }
+        });
+
+      } catch (error) {
+        console.error('提交审批操作失败:', error);
+      }
     },
     
     showAddContract() {
@@ -910,6 +1021,11 @@ export default {
   color: #721c24;
 }
 
+.status-badge.draft {
+  background: #e2e3e5;
+  color: #495057;
+}
+
 .status-text {
   font-size: 22rpx;
 }
@@ -982,6 +1098,12 @@ export default {
 .action-btn.download {
   background: #e8f5e8;
   color: #388e3c;
+}
+
+.action-btn.submit {
+  background: #fff3e0;
+  color: #ff6f00;
+  border: 1px solid #ffb74d;
 }
 
 .action-text {

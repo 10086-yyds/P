@@ -328,10 +328,10 @@
 					
 					// 根据标签页映射API状态
 					const statusMap = {
-						'pending': '待审批',
+						'pending': null, // 待审批页面不传状态参数，在前端过滤显示待审批和审批中状态
 						'processed': null, // 已处理需要特殊处理，不传状态参数，在前端过滤
 						'copied': null, // 抄送功能暂未实现，返回null不传递状态参数
-						'initiated': null // 我发起的需要根据创建者查询，暂不使用状态过滤
+						'initiated': null // 我发起的需要根据创建者查询，但会在前端过滤草稿状态
 					};
 					
 					const mappedStatus = statusMap[tabKey];
@@ -406,17 +406,34 @@
 							};
 						});
 						
-						// 对于特殊标签页，进行数据过滤
-						let finalData = transformedData;
-						if (tabKey === 'processed') {
-							// 已处理：只显示已批准和已拒绝的记录
-							finalData = transformedData.filter(item => 
-								['已批准', '已拒绝'].includes(item.status)
-							);
-						} else if (tabKey === 'copied') {
-							// 抄送：暂时显示空数据，因为后端未实现抄送功能
-							finalData = [];
-						}
+											// 对于特殊标签页，进行数据过滤
+					let finalData = transformedData;
+					if (tabKey === 'pending') {
+						// 待审批：只显示待审批和审批中的记录
+						finalData = transformedData.filter(item => 
+							['待审批', '审批中'].includes(item.status)
+						);
+						console.log('🔍 待审批数据过滤前:', transformedData.length, '条');
+						console.log('🔍 待审批数据过滤后:', finalData.length, '条');
+					} else if (tabKey === 'processed') {
+						// 已处理：只显示已批准和已拒绝的记录
+						finalData = transformedData.filter(item => 
+							['已批准', '已拒绝'].includes(item.status)
+						);
+						console.log('🔍 已处理数据过滤前:', transformedData.length, '条');
+						console.log('🔍 已处理数据过滤后:', finalData.length, '条');
+					} else if (tabKey === 'copied') {
+						// 抄送：暂时显示空数据，因为后端未实现抄送功能
+						finalData = [];
+					} else if (tabKey === 'initiated') {
+						// 我发起的：过滤掉草稿状态，只显示已进入审批流程的合同
+						finalData = transformedData.filter(item => 
+							item.status !== '草稿'
+						);
+						console.log('🔍 我发起的数据过滤前:', transformedData.length, '条');
+						console.log('🔍 我发起的数据过滤后:', finalData.length, '条');
+						console.log('🔍 过滤掉的草稿状态:', transformedData.length - finalData.length, '条');
+					}
 						
 						// 如果是第一页，直接替换数据；否则追加数据
 						if (this.page === 1) {
@@ -655,27 +672,18 @@
 					if ((result.statusCode === 200 || result.statusCode === 201) && result.data && result.data.success) {
 						console.log('✅ 审批操作成功');
 						
-						// 更新本地数据
-						const tabKey = this.tabs[this.currentTab].key;
-						const itemIndex = this.approvalData[tabKey].findIndex(item => item.id === id);
-						
-						if (itemIndex !== -1) {
-							const item = this.approvalData[tabKey][itemIndex];
-							item.status = action === 'approve' ? '已批准' : '已拒绝';
-							item.statusText = action === 'approve' ? '已通过' : '已驳回';
-							
-							// 从待审批列表移除
-							this.approvalData[tabKey].splice(itemIndex, 1);
-							
-							// 添加到已处理列表
-							this.approvalData.processed.unshift(item);
-						}
-						
 						uni.hideLoading();
 						uni.showToast({
 							title: action === 'approve' ? '审批通过' : '审批驳回',
 							icon: 'success'
 						});
+						
+						// 重新加载当前标签页数据以确保状态同步
+						setTimeout(() => {
+							this.page = 1;
+							this.hasMore = true;
+							this.loadApprovalData();
+						}, 1000);
 						
 					} else {
 						throw new Error(`API错误: ${result.data?.message || '审批操作失败'}`);
@@ -685,26 +693,12 @@
 					uni.hideLoading();
 					console.error('❌ 审批操作失败:', error);
 					
-					// 降级方案：仅更新本地状态
-					console.log('🔄 使用本地状态更新...');
-					const tabKey = this.tabs[this.currentTab].key;
-					const itemIndex = this.approvalData[tabKey].findIndex(item => item.id === id);
-					
-					if (itemIndex !== -1) {
-						const item = this.approvalData[tabKey][itemIndex];
-						item.status = action === 'approve' ? '已批准' : '已拒绝';
-						item.statusText = action === 'approve' ? '已通过' : '已驳回';
-						
-						// 从待审批列表移除
-						this.approvalData[tabKey].splice(itemIndex, 1);
-						
-						// 添加到已处理列表
-						this.approvalData.processed.unshift(item);
-					}
-					
-					uni.showToast({
-						title: action === 'approve' ? '审批通过（本地）' : '审批驳回（本地）',
-						icon: 'none'
+					// 显示真实的错误信息，不进行误导性的本地更新
+					uni.showModal({
+						title: '审批失败',
+						content: error.message || '网络错误，请检查网络连接后重试',
+						showCancel: false,
+						confirmText: '知道了'
 					});
 				}
 			},
