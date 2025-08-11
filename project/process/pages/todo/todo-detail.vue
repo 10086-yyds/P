@@ -23,18 +23,18 @@
       <!-- 合同基本信息 -->
       <view class="info-section">
         <view class="section-header">
-          <view class="section-title">合同名称合同名称</view>
-          <view class="contract-type-tag">合同类型</view>
+          <view class="section-title">{{ detailData.contractName || '合同名称' }}</view>
+          <view class="contract-type-tag">{{ detailData.contractType || '合同类型' }}</view>
         </view>
         
         <view class="info-grid">
           <view class="info-row">
             <text class="info-label">甲方单位</text>
-            <text class="info-value">大大建设</text>
+            <text class="info-value">{{ detailData.partyA || '大大建设' }}</text>
           </view>
           <view class="info-row">
             <text class="info-label">乙方单位</text>
-            <text class="info-value">乙方单位乙方单位</text>
+            <text class="info-value">{{ detailData.partyB || '乙方单位' }}</text>
           </view>
         </view>
       </view>
@@ -49,23 +49,23 @@
         <view class="finance-grid">
           <view class="finance-item">
             <text class="finance-label">含税金额</text>
-            <text class="finance-value">¥100000</text>
+            <text class="finance-value">¥{{ (detailData.amount || 100000).toLocaleString() }}</text>
           </view>
           <view class="finance-item">
             <text class="finance-label">税率</text>
-            <text class="finance-value">1</text>
+            <text class="finance-value">{{ detailData.taxRate || 1 }}%</text>
           </view>
           <view class="finance-item">
             <text class="finance-label">税额</text>
-            <text class="finance-value">¥990</text>
+            <text class="finance-value">¥{{ (detailData.taxAmount || 990).toLocaleString() }}</text>
           </view>
           <view class="finance-item">
             <text class="finance-label">不含税金额</text>
-            <text class="finance-value">¥99001</text>
+            <text class="finance-value">¥{{ (detailData.amountExcludingTax || 99001).toLocaleString() }}</text>
           </view>
           <view class="finance-item">
             <text class="finance-label">发票类型</text>
-            <text class="finance-value">增值税普通发票（蓝）</text>
+            <text class="finance-value">{{ detailData.invoiceType || '增值税普通发票（蓝）' }}</text>
           </view>
         </view>
       </view>
@@ -80,19 +80,19 @@
         <view class="other-grid">
           <view class="other-item">
             <text class="other-label">开始日期</text>
-            <text class="other-value">2021.07.26</text>
+            <text class="other-value">{{ detailData.startDate || '2021.07.26' }}</text>
           </view>
           <view class="other-item">
             <text class="other-label">结束日期</text>
-            <text class="other-value">2021.08.23</text>
+            <text class="other-value">{{ detailData.endDate || '2021.08.23' }}</text>
           </view>
           <view class="other-item">
             <text class="other-label">付款条件</text>
-            <text class="other-value">增值税普通发票（蓝）</text>
+            <text class="other-value">{{ detailData.paymentTerms || '增值税普通发票（蓝）' }}</text>
           </view>
           <view class="other-item">
             <text class="other-label">备注</text>
-            <text class="other-value">备注备注备注备注备注备注备注备注备注备注备注备注...</text>
+            <text class="other-value">{{ detailData.remarks || '备注备注备注备注备注备注备注备注备注备注备注备注...' }}</text>
           </view>
         </view>
       </view>
@@ -249,22 +249,130 @@ export default {
     }
   },
 
+  onShow() {
+    // 页面显示时刷新数据（处理从其他页面返回的情况）
+    if (this.approvalId) {
+      console.log('🔄 页面显示，刷新详情数据');
+      this.loadDetailData();
+    }
+  },
+
   methods: {
     goBack() {
       uni.navigateBack();
     },
 
-    loadDetailData() {
-      // 根据ID加载详情数据，这里使用模拟数据
-      this.detailData = {
-        title: '李想的合同申请',
-        company: '某兰公园一区改造工程',
-        statusText: '待核准审批',
-        status: 'pending'
+    async loadDetailData() {
+      try {
+        console.log('🔍 加载合同详情，ID:', this.approvalId);
+        
+        if (!this.approvalId) {
+          console.error('❌ 缺少合同申请ID');
+          uni.showToast({
+            title: '参数错误',
+            icon: 'none'
+          });
+          return;
+        }
+
+        uni.showLoading({ title: '加载中...' });
+
+        // 调用真实API获取合同申请详情
+        const result = await uni.request({
+          url: `http://localhost:3000/lz/api/contracts/${this.approvalId}`,
+          method: 'GET',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${uni.getStorageSync('token') || ''}`
+          },
+          timeout: 10000
+        });
+
+        console.log('📊 合同详情API响应:', result);
+
+        if (result.statusCode === 200 && result.data && result.data.success) {
+          const contractData = result.data.data;
+          console.log('✅ 获取合同详情成功:', contractData);
+
+          // 设置详情数据
+          this.detailData = {
+            title: `${contractData.applicant?.name || '未知'}的合同申请`,
+            company: contractData.project?.name || '未知项目',
+            statusText: this.getStatusText(contractData.status || '待审批'),
+            status: contractData.status || '待审批',
+            contractName: contractData.contract?.name || '未知合同',
+            contractType: contractData.contract?.type || '工程合同',
+            partyA: contractData.contract?.partyA?.name || '未知甲方',
+            partyB: contractData.contract?.partyB?.name || '未知乙方',
+            amount: contractData.financial?.amountIncludingTax || 0,
+            taxRate: contractData.financial?.taxRate || 0,
+            taxAmount: contractData.financial?.taxAmount || 0,
+            amountExcludingTax: contractData.financial?.amountExcludingTax || 0,
+            invoiceType: contractData.financial?.invoiceType || '增值税普通发票(蓝)',
+            startDate: contractData.contract?.startDate ? 
+              new Date(contractData.contract.startDate).toLocaleDateString('zh-CN') : '未知',
+            endDate: contractData.contract?.endDate ? 
+              new Date(contractData.contract.endDate).toLocaleDateString('zh-CN') : '未知',
+            paymentTerms: contractData.contract?.paymentTerms || '未知',
+            remarks: contractData.remarks || '无备注',
+            rawData: contractData
+          };
+
+          // 根据状态决定是否显示审批按钮
+          this.needApproval = ['待审批', '审批中'].includes(contractData.status);
+          
+          console.log('📋 详情数据设置完成:', {
+            status: this.detailData.status,
+            needApproval: this.needApproval
+          });
+
+        } else {
+          throw new Error(`API错误: ${result.data?.message || '获取详情失败'}`);
+        }
+
+        uni.hideLoading();
+
+      } catch (error) {
+        uni.hideLoading();
+        console.error('❌ 加载合同详情失败:', error);
+        
+        // 显示错误信息，不使用可能误导的模拟数据
+        this.detailData = {
+          title: '加载失败',
+          company: '无法获取项目信息',
+          statusText: '未知状态',
+          status: 'error'
+        };
+        this.needApproval = false;
+        
+        uni.showModal({
+          title: '加载失败',
+          content: '无法获取合同详情，请检查网络连接后重试',
+          showCancel: true,
+          cancelText: '返回',
+          confirmText: '重试',
+          success: (res) => {
+            if (res.confirm) {
+              this.loadDetailData(); // 重新尝试加载
+            } else {
+              uni.navigateBack(); // 返回上一页
+            }
+          }
+        });
+      }
+    },
+
+    // 获取状态文本
+    getStatusText(status) {
+      const statusMap = {
+        '草稿': '草稿',
+        '待审批': '待核准审批',
+        '审批中': '审批中',
+        '已批准': '已通过',
+        '已拒绝': '已驳回',
+        '已取消': '已撤销'
       };
-      
-      // 根据状态决定是否显示审批按钮
-      this.needApproval = this.detailData.status === 'pending';
+      return statusMap[status] || status;
     },
 
     getHeaderStatusClass() {
@@ -272,7 +380,13 @@ export default {
         'pending': 'status-pending',
         'approved': 'status-approved', 
         'rejected': 'status-rejected',
-        'cancelled': 'status-cancelled'
+        'cancelled': 'status-cancelled',
+        '草稿': 'status-draft',
+        '待审批': 'status-pending',
+        '审批中': 'status-processing',
+        '已批准': 'status-approved',
+        '已拒绝': 'status-rejected',
+        '已取消': 'status-cancelled'
       };
       return statusMap[this.detailData.status] || 'status-pending';
     },
@@ -314,27 +428,62 @@ export default {
       });
     },
 
-    handleApproval(action) {
-      uni.showLoading({ title: '处理中...' });
-      
-      // 模拟API调用
-      setTimeout(() => {
-        uni.hideLoading();
-        uni.showToast({
-          title: action === 'approve' ? '审批通过' : '审批驳回',
-          icon: 'success'
+    async handleApproval(action) {
+      try {
+        uni.showLoading({ title: '处理中...' });
+        
+        console.log('🔍 开始处理审批，操作:', action, 'ID:', this.approvalId);
+
+        // 调用真实的审批API
+        const result = await uni.request({
+          url: `http://localhost:3000/lz/api/contracts/${this.approvalId}/approve`,
+          method: 'POST',
+          header: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${uni.getStorageSync('token') || ''}`
+          },
+          data: {
+            action: action, // 'approve' 或 'reject'
+            comments: action === 'approve' ? '审批通过' : '审批驳回'
+          },
+          timeout: 10000
         });
+
+        console.log('📊 审批API响应:', result);
+
+        if ((result.statusCode === 200 || result.statusCode === 201) && result.data && result.data.success) {
+          console.log('✅ 审批操作成功');
+          
+          uni.hideLoading();
+          uni.showToast({
+            title: action === 'approve' ? '审批通过' : '审批驳回',
+            icon: 'success'
+          });
+          
+          // 重新加载详情数据以确保状态同步
+          await this.loadDetailData();
+          
+          // 延迟返回上一页
+          setTimeout(() => {
+            uni.navigateBack();
+          }, 1500);
+
+        } else {
+          throw new Error(`API错误: ${result.data?.message || '审批操作失败'}`);
+        }
+
+      } catch (error) {
+        uni.hideLoading();
+        console.error('❌ 审批操作失败:', error);
         
-        // 更新状态
-        this.detailData.status = action === 'approve' ? 'approved' : 'rejected';
-        this.detailData.statusText = action === 'approve' ? '已通过' : '已驳回';
-        this.needApproval = false;
-        
-        // 延迟返回
-        setTimeout(() => {
-          uni.navigateBack();
-        }, 1500);
-      }, 1000);
+        // 显示真实的错误信息
+        uni.showModal({
+          title: '审批失败',
+          content: error.message || '网络错误，请检查网络连接后重试',
+          showCancel: false,
+          confirmText: '知道了'
+        });
+      }
     }
   }
 };
@@ -394,6 +543,11 @@ export default {
           color: #fa8c16;
         }
         
+        &.status-processing {
+          background-color: #e6f7ff;
+          color: #1890ff;
+        }
+        
         &.status-approved {
           background-color: #e8f5e8;
           color: #52c41a;
@@ -402,6 +556,16 @@ export default {
         &.status-rejected {
           background-color: #ffeaea;
           color: #ff4d4f;
+        }
+        
+        &.status-cancelled {
+          background-color: #f0f0f0;
+          color: #999;
+        }
+        
+        &.status-draft {
+          background-color: #f5f5f5;
+          color: #666;
         }
       }
     }
