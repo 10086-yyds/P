@@ -6,7 +6,7 @@
         <text class="back-icon">←</text>
       </view>
       <view class="header-title">
-        <text>进度管理</text>
+        <text>项目进度统计</text>
       </view>
       <view class="header-right">
         <text class="refresh-icon" @click="refreshData">🔄</text>
@@ -40,10 +40,55 @@
         </view>
       </view>
 
+      <!-- 进度分布统计 -->
+      <view class="progress-distribution">
+        <view class="section-title">
+          <text>进度分布</text>
+        </view>
+        
+        <view class="distribution-grid">
+          <view class="dist-item">
+            <view class="dist-icon">🟢</view>
+            <view class="dist-info">
+              <text class="dist-number">{{ stats.progress100 }}</text>
+              <text class="dist-label">100%完成</text>
+            </view>
+          </view>
+          <view class="dist-item">
+            <view class="dist-icon">🟡</view>
+            <view class="dist-info">
+              <text class="dist-number">{{ stats.progress80_99 }}</text>
+              <text class="dist-label">80-99%</text>
+            </view>
+          </view>
+          <view class="dist-item">
+            <view class="dist-icon">🟠</view>
+            <view class="dist-info">
+              <text class="dist-number">{{ stats.progress50_79 }}</text>
+              <text class="dist-label">50-79%</text>
+            </view>
+          </view>
+          <view class="dist-item">
+            <view class="dist-icon">🔴</view>
+            <view class="dist-info">
+              <text class="dist-number">{{ stats.progress20_49 }}</text>
+              <text class="dist-label">20-49%</text>
+            </view>
+          </view>
+          <view class="dist-item">
+            <view class="dist-icon">⚫</view>
+            <view class="dist-info">
+              <text class="dist-number">{{ stats.progress0_19 }}</text>
+              <text class="dist-label">0-19%</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
       <!-- 项目进度列表 -->
       <view class="progress-list">
         <view class="section-title">
-          <text>项目进度</text>
+          <text>项目进度详情</text>
         </view>
         
         <view v-if="isLoading" class="loading-container">
@@ -72,28 +117,6 @@
           </view>
         </view>
       </view>
-
-      <!-- 快速操作 -->
-      <view class="quick-actions">
-        <view class="section-title">
-          <text>快速操作</text>
-        </view>
-        
-        <view class="action-grid">
-          <view class="action-item" @click="updateProgress">
-            <view class="action-icon">📝</view>
-            <text class="action-name">更新进度</text>
-          </view>
-          <view class="action-item" @click="viewReport">
-            <view class="action-icon">📊</view>
-            <text class="action-name">进度报告</text>
-          </view>
-          <view class="action-item" @click="exportData">
-            <view class="action-icon">📤</view>
-            <text class="action-name">导出数据</text>
-          </view>
-        </view>
-      </view>
     </view>
   </view>
 </template>
@@ -108,14 +131,19 @@ export default {
       stats: {
         total: 0,
         ongoing: 0,
-        completed: 0
+        completed: 0,
+        progress100: 0,
+        progress80_99: 0,
+        progress50_79: 0,
+        progress20_49: 0,
+        progress0_19: 0
       },
       progressItems: []
     };
   },
   
   onLoad(options) {
-    console.log('进度管理页面加载', options);
+    console.log('项目进度统计页面加载', options);
     this.loadProgressData();
   },
   
@@ -153,9 +181,7 @@ export default {
       this.isLoading = true;
       
       try {
-        console.log('开始加载进度管理数据...');
-        console.log('API配置:', API_CONFIG);
-        console.log('Token:', this.getToken());
+        console.log('开始加载项目进度数据...');
         
         // 调用后端API获取项目数据
         const result = await uni.request({
@@ -187,24 +213,23 @@ export default {
           throw new Error(`网络请求失败: ${error.errMsg || error}`);
         }
         
-                 if (response.statusCode === 200 && response.data) {
-           console.log('API响应数据:', response.data);
-           
-           // 检查API返回的数据结构
-           let projectsData;
-           if (response.data.success && response.data.data) {
-             // 如果数据结构是 { success: true, data: { projects: [...], total: 4 } }
-             if (response.data.data.projects) {
-               projectsData = response.data.data.projects;
-             } else {
-               projectsData = response.data.data;
-             }
-           } else {
-             projectsData = response.data;
-           }
-           
-           // 确保projectsData是数组
-           const projects = Array.isArray(projectsData) ? projectsData : [];
+        if (response.statusCode === 200 && response.data) {
+          console.log('API响应数据:', response.data);
+          
+          // 检查API返回的数据结构
+          let projectsData;
+          if (response.data.success && response.data.data) {
+            if (response.data.data.projects) {
+              projectsData = response.data.data.projects;
+            } else {
+              projectsData = response.data.data;
+            }
+          } else {
+            projectsData = response.data;
+          }
+          
+          // 确保projectsData是数组
+          const projects = Array.isArray(projectsData) ? projectsData : [];
           console.log('解析后的项目数据:', projects);
           
           // 处理项目数据
@@ -239,20 +264,34 @@ export default {
     // 计算统计数据
     calculateStats() {
       const total = this.progressItems.length;
-      const ongoing = this.progressItems.filter(item => 
-        item.status === 'ongoing' || item.status === 'active' || item.status === 'planning'
-      ).length;
-      const completed = this.progressItems.filter(item => 
-        item.status === 'completed' || item.progress >= 100
-      ).length;
+      
+      // 按进度区间统计（优先使用进度值）
+      const progress100 = this.progressItems.filter(item => item.progress >= 100).length;
+      const progress80_99 = this.progressItems.filter(item => item.progress >= 80 && item.progress < 100).length;
+      const progress50_79 = this.progressItems.filter(item => item.progress >= 50 && item.progress < 80).length;
+      const progress20_49 = this.progressItems.filter(item => item.progress >= 20 && item.progress < 50).length;
+      const progress0_19 = this.progressItems.filter(item => item.progress >= 0 && item.progress < 20).length;
+      
+      // 进行中项目 = 总项目 - 已完成项目
+      const completed = progress100; // 只有进度100%的才算已完成
+      const ongoing = total - completed;
       
       this.stats = {
         total,
         ongoing,
-        completed
+        completed,
+        progress100,
+        progress80_99,
+        progress50_79,
+        progress20_49,
+        progress0_19
       };
       
-      console.log('统计数据:', this.stats);
+      console.log('进度统计数据:', this.stats);
+      console.log('统计逻辑说明:');
+      console.log('- 已完成项目 = 进度100%的项目');
+      console.log('- 进行中项目 = 总项目 - 已完成项目');
+      console.log('- 进度分布按实际进度值统计');
     },
     
     // 加载模拟数据（备用方案）
@@ -308,45 +347,6 @@ export default {
             icon: 'error'
           });
         }
-      });
-    },
-    
-    // 更新进度
-    updateProgress() {
-      uni.showModal({
-        title: '更新进度',
-        content: '确定要更新项目进度吗？',
-        success: (res) => {
-          if (res.confirm) {
-            uni.showLoading({
-              title: '更新中...'
-            });
-            
-            setTimeout(() => {
-              uni.hideLoading();
-              uni.showToast({
-                title: '进度已更新',
-                icon: 'success'
-              });
-            }, 2000);
-          }
-        }
-      });
-    },
-    
-    // 查看报告
-    viewReport() {
-      uni.showToast({
-        title: '报告功能开发中',
-        icon: 'none'
-      });
-    },
-    
-    // 导出数据
-    exportData() {
-      uni.showToast({
-        title: '导出功能开发中',
-        icon: 'none'
       });
     },
     
@@ -506,12 +506,49 @@ export default {
   color: #666;
 }
 
+/* 进度分布统计 */
+.progress-distribution {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 30rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+.distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 15rpx;
+}
+
+.dist-item {
+  text-align: center;
+  padding: 20rpx 10rpx;
+}
+
+.dist-icon {
+  font-size: 32rpx;
+  margin-bottom: 10rpx;
+}
+
+.dist-number {
+  display: block;
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 5rpx;
+}
+
+.dist-label {
+  font-size: 20rpx;
+  color: #666;
+}
+
 /* 进度列表 */
 .progress-list {
   background: white;
   border-radius: 20rpx;
   padding: 30rpx;
-  margin-bottom: 30rpx;
   box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
 }
 
@@ -643,43 +680,5 @@ export default {
 .item-status.not-started {
   background-color: #f5f5f5;
   color: #999;
-}
-
-/* 快速操作 */
-.quick-actions {
-  background: white;
-  border-radius: 20rpx;
-  padding: 30rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
-}
-
-.action-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20rpx;
-}
-
-.action-item {
-  text-align: center;
-  padding: 30rpx 20rpx;
-  border-radius: 15rpx;
-  background: #f8f9ff;
-  transition: all 0.3s ease;
-  cursor: pointer;
-}
-
-.action-item:active {
-  background: #e8ecff;
-  transform: scale(0.95);
-}
-
-.action-icon {
-  font-size: 48rpx;
-  margin-bottom: 15rpx;
-}
-
-.action-name {
-  font-size: 24rpx;
-  color: #333;
 }
 </style>

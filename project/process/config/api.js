@@ -21,6 +21,32 @@ export const API_CONFIG = {
   // 合同API前缀
   CONTRACT_API: '/lz/api/contracts',
   
+  // 图片上传API配置
+  UPLOAD: {
+    // 上传图片
+    UPLOAD_IMAGE: '/lz/api/upload/image',
+    // 上传文件
+    UPLOAD_FILE: '/lz/api/upload/file',
+    // 删除图片
+    DELETE_IMAGE: '/lz/api/upload/delete'
+  },
+  
+  // 代办事项API配置
+  TODO: {
+    // 获取代办事项列表
+    GET_TODOS: '/lz/api/todos',
+    // 创建代办事项
+    CREATE_TODO: '/lz/api/todos',
+    // 更新代办事项
+    UPDATE_TODO: '/lz/api/todos',
+    // 删除代办事项
+    DELETE_TODO: '/lz/api/todos',
+    // 标记代办事项完成
+    COMPLETE_TODO: '/lz/api/todos/complete',
+    // 获取代办事项统计
+    GET_TODO_STATS: '/lz/api/todos/stats'
+  },
+  
   // 高德地图API配置
   AMAP: {
     // 高德地图API密钥

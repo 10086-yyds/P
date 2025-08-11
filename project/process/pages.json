@@ -45,6 +45,13 @@
 			}
 		},
 		{
+			"path": "pages/todo/create-todo",
+			"style": {
+				"navigationBarTitleText": "创建代办事项",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/project/project-detail",
 			"style": {
 				"navigationBarTitleText": "项目详情",
